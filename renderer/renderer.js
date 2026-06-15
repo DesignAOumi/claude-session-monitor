@@ -6,8 +6,33 @@ let selectedId = null;
 let userPinned = false; // true once the user clicks a row
 let mode = 'simple'; // 'simple' (beginner) | 'detail' (technical)
 
-// USD -> JPY conversion for the beginner-friendly money display (rough estimate).
-const USD_JPY = 155;
+// ░░ Billing (actual cost the user is really paying) ░░
+// Token-based cost is intentionally NOT shown — Claude Code transcripts don't
+// record real charges. The user enters their flat plan fee + any extra below.
+const BILLING_DEFAULT = { currency: 'jpy', plan: 3100, additional: 0 }; // ≈ Pro $20/mo
+let billing = loadBilling();
+
+function loadBilling() {
+  try {
+    const raw = localStorage.getItem('cm_billing');
+    if (raw) return { ...BILLING_DEFAULT, ...JSON.parse(raw) };
+  } catch {}
+  return { ...BILLING_DEFAULT };
+}
+function saveBilling(b) {
+  billing = b;
+  try {
+    localStorage.setItem('cm_billing', JSON.stringify(b));
+  } catch {}
+}
+const curSign = (c) => (c === 'usd' ? '$' : '¥');
+const fmtAmount = (n, c = billing.currency) => {
+  const v = Number(n) || 0;
+  return c === 'usd' ? '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '¥' + Math.round(v).toLocaleString();
+};
+// Headline actual cost = plan + additional (a fixed monthly figure).
+const actualTotal = () => (Number(billing.plan) || 0) + (Number(billing.additional) || 0);
+const fmtActual = () => fmtAmount(actualTotal());
 
 // ░░ Formatters ░░
 const fmtTokens = (n) => {
@@ -15,12 +40,6 @@ const fmtTokens = (n) => {
   if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
   if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
   return String(n | 0);
-};
-const fmtCost = (c) => {
-  if (c >= 100) return '$' + c.toFixed(0);
-  if (c >= 1) return '$' + c.toFixed(2);
-  if (c > 0) return '$' + c.toFixed(3);
-  return '$0';
 };
 const fmtAge = (ms) => {
   const s = Math.floor(ms / 1000);
@@ -37,15 +56,6 @@ const hhmmss = (ts) => {
   if (!ts) return '--:--:--';
   const d = new Date(ts);
   return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
-};
-
-// Money in JPY (estimate) with the USD figure in parentheses.
-const fmtMoney = (usd) => {
-  if (!usd || usd <= 0) return '—';
-  const yen = Math.round(usd * USD_JPY);
-  const yenStr = yen >= 1 ? yen.toLocaleString() + '円' : '1円未満';
-  const usdStr = usd >= 1 ? '$' + usd.toFixed(2) : '$' + usd.toFixed(3);
-  return `約${yenStr} <em>(${usdStr})</em>`;
 };
 
 // Relative time in Japanese.
@@ -227,7 +237,6 @@ function simpleCard(s) {
       <div class="scard-top">
         <span class="status-pill ${st.key}">${st.emoji} ${st.label}</span>
         <span class="scard-proj">${esc(s.project || '—')}</span>
-        <span class="scard-money">${fmtMoney(s.cost)}</span>
       </div>
       <div class="scard-title">いま取り組んでいること: <b>${esc(s.title || s.project || '—')}</b></div>
       <div class="scard-now">
@@ -273,7 +282,11 @@ function renderSimple(data) {
     <div class="sum-item waiting"><span class="sum-num">${waiting}</span><span class="sum-lbl">件があなたの返信待ち</span></div>
     <div class="sum-item"><span class="sum-num">${sessions.length}</span><span class="sum-lbl">件を記録中</span></div>
     <div class="sum-spacer"></div>
-    <div class="sum-money">これまでの推定利用料金 <b>${fmtMoney(stats.totalCost)}</b></div>`;
+    <div class="sum-money">今月の料金（実額） <b>${fmtActual()}</b><br>
+      <span style="font-size:11px">プラン ${fmtAmount(billing.plan)}${(Number(billing.additional) || 0) > 0 ? ' ＋ 追加 ' + fmtAmount(billing.additional) : ''}　<a id="sum-edit" style="color:var(--amber);cursor:pointer">変更</a></span>
+    </div>`;
+  const sumEdit = document.getElementById('sum-edit');
+  if (sumEdit) sumEdit.addEventListener('click', openSettings);
 
   // Cards: live (working / waiting) first, then a compact list of stopped ones.
   const listEl = document.getElementById('simple-list');
@@ -294,7 +307,7 @@ function renderSimple(data) {
         <div class="scard-compact">
           <span class="status-pill stopped">⚪ 停止中</span>
           <span class="scard-proj">${esc(s.project || '—')}</span>
-          <span class="muted">最後の活動: ${fmtAgoJa(s.mtimeMs)} ・ ${fmtMoney(s.cost)}</span>
+          <span class="muted">最後の活動: ${fmtAgoJa(s.mtimeMs)}</span>
         </div>`
       )
       .join('');
@@ -331,6 +344,56 @@ function render(data) {
   renderSimple(data);
 }
 
+// ░░ Settings modal ░░
+let formCurrency = billing.currency;
+function refreshFormSigns() {
+  const sign = curSign(formCurrency);
+  document.getElementById('sign-plan').textContent = sign;
+  document.getElementById('sign-add').textContent = sign;
+  document
+    .querySelectorAll('#cur-seg .seg-btn')
+    .forEach((b) => b.classList.toggle('active', b.dataset.cur === formCurrency));
+  const plan = parseFloat(document.getElementById('in-plan').value) || 0;
+  const add = parseFloat(document.getElementById('in-add').value) || 0;
+  document.getElementById('form-total').textContent =
+    '合計: ' + fmtAmount(plan + add, formCurrency);
+}
+function openSettings() {
+  formCurrency = billing.currency;
+  document.getElementById('in-plan').value = billing.plan;
+  document.getElementById('in-add').value = billing.additional;
+  refreshFormSigns();
+  document.getElementById('settings-overlay').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('open');
+}
+function wireSettings() {
+  document.getElementById('gear-btn').addEventListener('click', openSettings);
+  document.getElementById('settings-cancel').addEventListener('click', closeSettings);
+  document.getElementById('settings-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'settings-overlay') closeSettings();
+  });
+  document.getElementById('cur-seg').addEventListener('click', (e) => {
+    const b = e.target.closest('.seg-btn');
+    if (b) {
+      formCurrency = b.dataset.cur;
+      refreshFormSigns();
+    }
+  });
+  document.getElementById('in-plan').addEventListener('input', refreshFormSigns);
+  document.getElementById('in-add').addEventListener('input', refreshFormSigns);
+  document.getElementById('settings-save').addEventListener('click', () => {
+    saveBilling({
+      currency: formCurrency,
+      plan: parseFloat(document.getElementById('in-plan').value) || 0,
+      additional: parseFloat(document.getElementById('in-add').value) || 0,
+    });
+    closeSettings();
+    if (latest) render(latest);
+  });
+}
+
 function setMode(m) {
   mode = m;
   document.body.classList.toggle('mode-simple', m === 'simple');
@@ -345,7 +408,7 @@ function renderRibbon(s) {
   document.getElementById('s-active').textContent = s.active;
   document.getElementById('s-total').textContent = s.totalSessions;
   document.getElementById('s-projects').textContent = s.projectCount;
-  document.getElementById('s-cost').textContent = fmtCost(s.totalCost);
+  document.getElementById('s-cost').textContent = fmtActual();
   document.getElementById('s-tokens').textContent = fmtTokens(s.tokens.total);
   document.getElementById('s-tools').textContent = s.totalToolCalls.toLocaleString();
   document.getElementById('s-msgs').textContent = s.totalMessages.toLocaleString();
@@ -378,7 +441,7 @@ function renderSessions(sessions) {
         </span>
         <span class="num dim">${s.totalMessages}</span>
         <span class="num">${fmtTokens(s.tokens.total)}</span>
-        <span class="num cost">${fmtCost(s.cost)}</span>
+        <span class="num">${s.toolCalls}</span>
         <span class="num dim">${fmtAge(s.ageMs)}</span>
       </div>`;
     })
@@ -408,7 +471,7 @@ function renderDetail(s) {
     <div class="detail-path" id="detail-open" title="Reveal in Finder">${esc(s.cwd || '')}${s.gitBranch ? '  ⑂ ' + esc(s.gitBranch) : ''}</div>
     <div class="kv-grid">
       <div class="kv"><span class="k">MODEL</span><span class="v">${modelShort(s.model)}</span></div>
-      <div class="kv"><span class="k">EST. COST</span><span class="v green">${fmtCost(s.cost)}</span></div>
+      <div class="kv"><span class="k">STATUS</span><span class="v">${ACTIVITY_LABEL[s.status === 'active' ? s.currentActivity.state : 'idle'] || s.status}</span></div>
       <div class="kv"><span class="k">MESSAGES</span><span class="v">${s.totalMessages} <span style="color:var(--ink-faint);font-size:10px">(${s.userMessages}u / ${s.assistantMessages}a)</span></span></div>
       <div class="kv"><span class="k">TOOL CALLS</span><span class="v amber">${s.toolCalls}</span></div>
       <div class="kv"><span class="k">DURATION</span><span class="v">${fmtAge(s.durationMs)}</span></div>
@@ -533,8 +596,8 @@ function drawCostChart(s) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  const series = (s && s.costSeries) || [];
-  meta.textContent = s ? fmtCost(s.cost) : '$0';
+  const series = (s && s.usageSeries) || [];
+  meta.textContent = s ? fmtTokens(s.tokens.output) + ' 生成' : '0';
 
   // baseline grid
   ctx.strokeStyle = 'rgba(120,130,90,0.08)';
@@ -557,9 +620,9 @@ function drawCostChart(s) {
   const pad = 6;
   const t0 = series[0].ts;
   const t1 = series[series.length - 1].ts || t0 + 1;
-  const maxCost = series[series.length - 1].cost || 1;
+  const maxTok = series[series.length - 1].tokens || 1;
   const x = (t) => pad + ((t - t0) / (t1 - t0 || 1)) * (w - pad * 2);
-  const y = (c) => h - pad - (c / maxCost) * (h - pad * 2);
+  const y = (c) => h - pad - (c / maxTok) * (h - pad * 2);
 
   // area
   const grad = ctx.createLinearGradient(0, 0, 0, h);
@@ -567,7 +630,7 @@ function drawCostChart(s) {
   grad.addColorStop(1, 'rgba(121,208,90,0.02)');
   ctx.beginPath();
   ctx.moveTo(x(t0), h - pad);
-  for (const p of series) ctx.lineTo(x(p.ts), y(p.cost));
+  for (const p of series) ctx.lineTo(x(p.ts), y(p.tokens));
   ctx.lineTo(x(t1), h - pad);
   ctx.closePath();
   ctx.fillStyle = grad;
@@ -575,7 +638,7 @@ function drawCostChart(s) {
 
   // line
   ctx.beginPath();
-  series.forEach((p, i) => (i ? ctx.lineTo(x(p.ts), y(p.cost)) : ctx.moveTo(x(p.ts), y(p.cost))));
+  series.forEach((p, i) => (i ? ctx.lineTo(x(p.ts), y(p.tokens)) : ctx.moveTo(x(p.ts), y(p.tokens))));
   ctx.strokeStyle = '#79d05a';
   ctx.lineWidth = 1.5;
   ctx.stroke();
@@ -584,7 +647,7 @@ function drawCostChart(s) {
   const last = series[series.length - 1];
   ctx.fillStyle = '#79d05a';
   ctx.beginPath();
-  ctx.arc(x(last.ts), y(last.cost), 2.5, 0, Math.PI * 2);
+  ctx.arc(x(last.ts), y(last.tokens), 2.5, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -603,6 +666,7 @@ async function boot() {
     const btn = e.target.closest('.mode-btn');
     if (btn) setMode(btn.dataset.mode);
   });
+  wireSettings();
 
   tickClock();
   setInterval(tickClock, 1000);

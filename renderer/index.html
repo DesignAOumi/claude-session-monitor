@@ -20,12 +20,44 @@
         <button class="mode-btn active" data-mode="simple">しんぷる</button>
         <button class="mode-btn" data-mode="detail">くわしく</button>
       </div>
+      <button class="gear-btn" id="gear-btn" title="料金の設定">⚙ 料金設定</button>
       <div class="clock">
         <span class="live" id="live-dot">● LIVE</span>
         <span class="time" id="clock-local">--:--:--</span>
         <span class="time-utc" id="clock-utc">UTC --:--</span>
       </div>
     </header>
+
+    <!-- ░░ BILLING SETTINGS MODAL ░░ -->
+    <div class="modal-overlay" id="settings-overlay">
+      <div class="modal">
+        <div class="modal-head">料金の設定（実額）</div>
+        <p class="modal-note">
+          Claude Code のセッション記録には実際の請求額が含まれないため、ここで入力した
+          <b>定額プランの月額</b>と<b>追加料金</b>を「実際にかかっている料金」として表示します。
+        </p>
+        <div class="form-row">
+          <label>通貨</label>
+          <div class="seg" id="cur-seg">
+            <button data-cur="jpy" class="seg-btn active">円 (¥)</button>
+            <button data-cur="usd" class="seg-btn">ドル ($)</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>プラン月額</label>
+          <div class="input-wrap"><span class="cur-sign" id="sign-plan">¥</span><input type="number" id="in-plan" min="0" step="1" /></div>
+        </div>
+        <div class="form-row">
+          <label>追加料金</label>
+          <div class="input-wrap"><span class="cur-sign" id="sign-add">¥</span><input type="number" id="in-add" min="0" step="1" /></div>
+        </div>
+        <div class="form-hint" id="form-total">合計: —</div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="settings-cancel">キャンセル</button>
+          <button class="btn-primary" id="settings-save">保存</button>
+        </div>
+      </div>
+    </div>
 
     <!-- ░░ SIMPLE (BEGINNER) VIEW ░░ -->
     <div class="simple-view" id="simple-view">
@@ -38,7 +70,7 @@
       <div class="stat" data-k="active"><span class="stat-label">ACTIVE</span><span class="stat-val" id="s-active">0</span></div>
       <div class="stat"><span class="stat-label">SESSIONS</span><span class="stat-val" id="s-total">0</span></div>
       <div class="stat"><span class="stat-label">PROJECTS</span><span class="stat-val" id="s-projects">0</span></div>
-      <div class="stat"><span class="stat-label">EST. COST</span><span class="stat-val accent" id="s-cost">$0</span></div>
+      <div class="stat"><span class="stat-label">今月の料金</span><span class="stat-val accent" id="s-cost">—</span></div>
       <div class="stat"><span class="stat-label">TOKENS</span><span class="stat-val" id="s-tokens">0</span></div>
       <div class="stat"><span class="stat-label">TOOL CALLS</span><span class="stat-val" id="s-tools">0</span></div>
       <div class="stat"><span class="stat-label">MESSAGES</span><span class="stat-val" id="s-msgs">0</span></div>
@@ -59,7 +91,7 @@
           <span class="col-activity">ACTIVITY</span>
           <span class="col-num">MSGS</span>
           <span class="col-num">TOKENS</span>
-          <span class="col-num">COST</span>
+          <span class="col-num">STEPS</span>
           <span class="col-num">AGE</span>
         </div>
         <div class="sessions-body" id="sessions-body"></div>
@@ -84,7 +116,7 @@
 
       <!-- COST GROWTH CHART -->
       <section class="panel panel-chart">
-        <div class="panel-head"><span>▸ COST GROWTH</span><span class="panel-meta" id="chart-cost-meta">$0</span></div>
+        <div class="panel-head"><span>▸ 生成トークンの推移</span><span class="panel-meta" id="chart-cost-meta">0</span></div>
         <canvas id="chart-cost"></canvas>
       </section>
 

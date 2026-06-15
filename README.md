@@ -20,7 +20,7 @@ Switch anytime with the **しんぷる / くわしく** toggle in the top bar.
   - "Now doing…" in plain words with an icon (📖 reading a file, 💻 running a command, 🤔 thinking…)
   - Plain-language activity log ("✏️ edited a file — 2 min ago")
   - Honest progress proxies: working time, number of steps, files touched, your message count, and an **activity pulse** sparkline
-  - Money shown in yen with the USD figure: `約2,100円 ($13.97)`
+  - **Actual cost** you configure (flat plan fee + any additional charge) — not a token-based guess
 - **くわしく (Detail)** — the technical trading-terminal dashboard described below.
 
 ## Features (Detail view)
@@ -70,12 +70,15 @@ The dashboard updates automatically as your Claude Code sessions run.
 
 The only runtime dependency is Electron. Everything else is plain Node + vanilla JS.
 
-## Cost estimate caveat
+## Cost display
 
-Costs are **rough estimates** derived from a static per-model price table in
-[`src/pricing.js`](src/pricing.js) (Opus / Sonnet / Haiku tiers, with the standard
-cache-write ×1.25 and cache-read ×0.1 multipliers). They are **not** billing-accurate —
-treat them as a relative signal, and edit the table to match current pricing.
+Claude Code transcripts do **not** record what you are actually charged, so the app
+does not show a token-based cost guess. Instead, open **⚙ 料金設定** in the top bar and
+enter your **flat plan fee** (e.g. Claude Pro / Max) plus any **additional charge**.
+That sum is shown as your real monthly cost (yen or USD), and is saved locally.
+
+Token usage is still shown as *usage* (not money): per-session token counts and a
+"生成トークンの推移" (output-token growth) chart.
 
 ## Privacy
 

@@ -84,10 +84,13 @@ function parseSessionFile(file, mtimeMs) {
     cost: 0,
     currentActivity: { state: 'idle', tool: null, detail: '', ts: null },
     feed: [],
-    costSeries: [],
+    // Cumulative usage timeline (one point per assistant message): used by the
+    // "usage growth" chart. `tokens` = cumulative output tokens (work produced).
+    usageSeries: [],
   };
 
   let cumCost = 0;
+  let cumOut = 0;
 
   const lines = raw.split('\n');
   for (const line of lines) {
@@ -170,7 +173,8 @@ function parseSessionFile(file, mtimeMs) {
         session.tokens.cacheWrite += u.cache_creation_input_tokens || 0;
         session.tokens.cacheRead += u.cache_read_input_tokens || 0;
         cumCost += estimateCost(msg.model, u);
-        if (ts) session.costSeries.push({ ts, cost: cumCost });
+        cumOut += u.output_tokens || 0;
+        if (ts) session.usageSeries.push({ ts, tokens: cumOut });
       }
 
       if (Array.isArray(content)) {
