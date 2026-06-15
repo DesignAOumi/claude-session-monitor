@@ -429,8 +429,10 @@ function simpleCard(s) {
       <div class="scard-title">いま取り組んでいること: <b>${esc(s.title || s.project || '—')}</b></div>
       <div class="scard-now">
         <span class="now-icon">${act.emoji}</span>
-        <span class="now-text">${esc(act.text)}</span>
-        ${act.detail ? `<span class="now-detail">${esc(act.detail)}</span>` : ''}
+        <div class="now-body">
+          <div class="now-text">${esc(act.text)}</div>
+          ${act.detail ? `<div class="now-detail">${esc(act.detail)}</div>` : ''}
+        </div>
       </div>
       ${pending}
       <div class="scard-chips">
