@@ -152,11 +152,11 @@ function activityPlain(s) {
     case 'thinking':
       return { emoji: '🤔', text: '考えています', detail: '' };
     case 'responding':
-      return { emoji: '💬', text: '返事を書いています', detail: '' };
+      return { emoji: '💬', text: '返事を書いています', detail: detail };
     case 'processing':
-      return { emoji: '⚙️', text: '結果を確認しています', detail: '' };
+      return { emoji: '⚙️', text: '結果を確認しています', detail: detail };
     case 'awaiting':
-      return { emoji: '📥', text: '指示を受け取りました', detail: '' };
+      return { emoji: '📥', text: '指示を受け取りました', detail: detail };
     case 'tool-error':
       return { emoji: '⚠️', text: 'エラーに対応しています', detail: '' };
     case 'running': {
@@ -171,13 +171,19 @@ function activityPlain(s) {
 function feedPlain(item) {
   switch (item.kind) {
     case 'user':
-      return { emoji: '🙋', txt: 'あなたが指示しました', detail: item.detail || '' };
+      return { emoji: '🙋', txt: 'あなたの指示', detail: item.detail || '' };
     case 'assistant':
-      return { emoji: '💬', txt: '返信しました', detail: '' };
-    case 'result':
-      return { emoji: '✅', txt: '結果を受け取りました', detail: '' };
-    case 'error':
-      return { emoji: '⚠️', txt: 'エラーがありました', detail: '' };
+      return { emoji: '💬', txt: 'Claudeの返信', detail: item.detail || '' };
+    case 'result': {
+      const d = item.tool ? toolDesc(item.tool) : null;
+      const txt = d ? d.past.replace(/しました$/, '結果を確認') : '結果を受け取りました';
+      const detail = [item.target, item.detail].filter(Boolean).join(' → ');
+      return { emoji: d ? d.emoji : '✅', txt, detail };
+    }
+    case 'error': {
+      const detail = [item.target, item.detail].filter(Boolean).join(' → ');
+      return { emoji: '⚠️', txt: 'エラーが発生', detail };
+    }
     case 'tool': {
       const d = toolDesc(item.label);
       return { emoji: d.emoji, txt: d.past, detail: item.detail || '' };
@@ -220,14 +226,15 @@ function simpleCard(s) {
     (s.tools.Read || 0) + (s.tools.Edit || 0) + (s.tools.Write || 0) + (s.tools.NotebookEdit || 0);
   const logs = [...s.feed]
     .reverse()
-    .slice(0, 5)
+    .slice(0, 8)
     .map((item) => {
       const p = feedPlain(item);
       return `<div class="log-item">
         <span class="log-emoji">${p.emoji}</span>
-        <span class="log-txt">${esc(p.txt)}</span>
-        ${p.detail ? `<span class="now-detail" style="flex:0 1 auto">${esc(p.detail)}</span>` : ''}
-        <span class="log-time">${fmtAgoJa(item.ts)}</span>
+        <div class="log-body">
+          <div class="log-line"><span class="log-tag">${esc(p.txt)}</span><span class="log-time">${fmtAgoJa(item.ts)}</span></div>
+          ${p.detail ? `<div class="log-detail">${esc(p.detail)}</div>` : ''}
+        </div>
       </div>`;
     })
     .join('');

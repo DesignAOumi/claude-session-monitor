@@ -7,34 +7,63 @@ const { estimateCost } = require('./pricing');
 /** Turn a tool_use block into a short human label of what it's doing. */
 function toolDetail(name, input) {
   if (!input || typeof input !== 'object') return '';
-  const base = (p) => (typeof p === 'string' ? p.split('/').pop() : '');
+  // Show the last two path segments ("folder/file") so it's clear which file.
+  const tail = (p) => {
+    if (typeof p !== 'string') return '';
+    const parts = p.split('/').filter(Boolean);
+    return parts.slice(-2).join('/');
+  };
+  const clip = (s, n = 160) =>
+    typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, n) : '';
   switch (name) {
     case 'Read':
     case 'Edit':
     case 'Write':
+      return tail(input.file_path);
     case 'NotebookEdit':
-      return base(input.file_path || input.notebook_path);
+      return tail(input.notebook_path);
     case 'Bash':
-      return (input.description || input.command || '').toString().slice(0, 60);
+      // Both the human-readable intent and the actual command, when available.
+      return input.description && input.command
+        ? clip(`${input.description} › ${input.command}`)
+        : clip(input.command || input.description);
     case 'Grep':
-      return input.pattern ? `/${input.pattern}/` : '';
+      return input.pattern
+        ? `「${input.pattern}」を検索${input.path ? ` (${tail(input.path)})` : ''}`
+        : '';
     case 'Glob':
       return input.pattern || '';
     case 'Task':
     case 'Agent':
-      return input.description || input.subagent_type || '';
+      return clip(input.description || input.subagent_type);
     case 'WebFetch':
       return input.url || '';
     case 'WebSearch':
       return input.query || '';
+    case 'TodoWrite':
+      return '';
     default: {
-      // Generic: first short string value in the input.
+      // Generic: first non-trivial string value in the input.
       for (const v of Object.values(input)) {
-        if (typeof v === 'string' && v.length) return v.slice(0, 60);
+        if (typeof v === 'string' && v.length) return clip(v);
       }
       return '';
     }
   }
+}
+
+/** Extract a short, single-line snippet from a tool_result's content. */
+function resultSnippet(content) {
+  let text = '';
+  if (typeof content === 'string') text = content;
+  else if (Array.isArray(content)) {
+    for (const b of content) {
+      if (typeof b === 'string') text += ' ' + b;
+      else if (b && b.type === 'text' && typeof b.text === 'string') text += ' ' + b.text;
+      else if (b && typeof b.content === 'string') text += ' ' + b.content;
+    }
+  }
+  return text.replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
 /** Extract plain text from a message content (string or block array). */
@@ -91,6 +120,7 @@ function parseSessionFile(file, mtimeMs) {
 
   let cumCost = 0;
   let cumOut = 0;
+  const toolById = {}; // tool_use_id -> { name, detail } so results know their source
 
   const lines = raw.split('\n');
   for (const line of lines) {
@@ -133,29 +163,33 @@ function parseSessionFile(file, mtimeMs) {
         for (const b of content) {
           if (b && b.type === 'tool_result') {
             const isErr = b.is_error === true;
+            const src = toolById[b.tool_use_id] || null;
+            const snip = resultSnippet(b.content);
             session.currentActivity = {
               state: isErr ? 'tool-error' : 'processing',
-              tool: null,
-              detail: isErr ? 'tool error' : 'tool result',
+              tool: src ? src.name : null,
+              detail: src ? src.detail : '',
               ts,
             };
             pushFeed(session.feed, {
               ts,
               kind: isErr ? 'error' : 'result',
-              label: isErr ? 'TOOL ERR' : 'RESULT',
-              detail: '',
+              label: src ? src.name : isErr ? 'TOOL ERR' : 'RESULT',
+              tool: src ? src.name : null,
+              target: src ? src.detail : '',
+              detail: snip,
             });
           }
         }
       } else if (!o.isMeta) {
         session.userMessages += 1;
         const t = textOf(content).trim();
-        session.currentActivity = { state: 'awaiting', tool: null, detail: '', ts };
+        session.currentActivity = { state: 'awaiting', tool: null, detail: t.slice(0, 120), ts };
         pushFeed(session.feed, {
           ts,
           kind: 'user',
           label: 'USER',
-          detail: t.slice(0, 80),
+          detail: t.slice(0, 200),
         });
       }
       continue;
@@ -186,6 +220,7 @@ function parseSessionFile(file, mtimeMs) {
             session.toolCalls += 1;
             session.tools[b.name] = (session.tools[b.name] || 0) + 1;
             const detail = toolDetail(b.name, b.input);
+            if (b.id) toolById[b.id] = { name: b.name, detail };
             session.currentActivity = { state: 'running', tool: b.name, detail, ts };
             pushFeed(session.feed, {
               ts,
@@ -199,10 +234,10 @@ function parseSessionFile(file, mtimeMs) {
           if (lastBlock.type === 'thinking') {
             session.currentActivity = { state: 'thinking', tool: null, detail: '', ts };
           } else if (lastBlock.type === 'text') {
-            session.currentActivity = { state: 'responding', tool: null, detail: '', ts };
             const t = textOf(content).trim();
+            session.currentActivity = { state: 'responding', tool: null, detail: t.slice(0, 120), ts };
             if (t)
-              pushFeed(session.feed, { ts, kind: 'assistant', label: 'CLAUDE', detail: t.slice(0, 80) });
+              pushFeed(session.feed, { ts, kind: 'assistant', label: 'CLAUDE', detail: t.slice(0, 240) });
           }
         }
       }
