@@ -551,6 +551,8 @@ body.mode-detail .simple-view { display: none; }
 .live-chip .chip-dot { width: 8px; height: 8px; border-radius: 50%; }
 .live-chip .chip-dot.working { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1.4s infinite; }
 .live-chip .chip-dot.waiting { background: var(--amber); }
+.live-chip .chip-dot.stopped { background: var(--ink-faint); }
+.live-chip.stopped { border-color: var(--border-bright); opacity: 0.8; }
 .live-chip .chip-proj { white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .live-chip .chip-act { font-size: 13px; }
 .live-chip.working { border-color: rgba(121,208,90,0.45); }

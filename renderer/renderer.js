@@ -477,21 +477,34 @@ function renderSimple(data) {
   // detail below. Up to 2 can be shown side by side when split view is on.
   const listEl = document.getElementById('simple-list');
   const liveSessions = [...workingList, ...waitingList]; // running first
-  const liveIds = liveSessions.map((s) => s.sessionId);
+  const liveIds = new Set(liveSessions.map((s) => s.sessionId));
+  const allIds = new Set(sessions.map((s) => s.sessionId));
 
-  // Resolve selection against the current live set.
-  simpleSelection = simpleSelection.filter((id) => liveIds.includes(id));
+  // Keep a selected session open until it truly disappears (its file is gone) —
+  // do NOT drop it just because it went idle, so the detail you're reading stays
+  // open until the session actually ends.
+  simpleSelection = simpleSelection.filter((id) => allIds.has(id));
   if (!simpleSelection.length && liveSessions.length) simpleSelection = [liveSessions[0].sessionId];
   if (!splitMode && simpleSelection.length > 1) simpleSelection = simpleSelection.slice(0, 1);
 
+  // Chips: live sessions, plus any selected session that has since gone idle (pinned open).
+  const chipSessions = [...liveSessions];
+  for (const id of simpleSelection) {
+    if (!liveIds.has(id)) {
+      const s = sessions.find((x) => x.sessionId === id);
+      if (s) chipSessions.push(s);
+    }
+  }
+
   let html = '';
 
-  if (liveSessions.length) {
-    const chips = liveSessions
+  if (chipSessions.length) {
+    const chips = chipSessions
       .map((s) => {
         const stp = statusPlain(s);
         const sel = simpleSelection.includes(s.sessionId);
-        const a = stp.key === 'working' ? activityPlain(s) : { emoji: '✋' };
+        const a =
+          stp.key === 'working' ? activityPlain(s) : { emoji: stp.key === 'waiting' ? '✋' : '📌' };
         const order = sel ? simpleSelection.indexOf(s.sessionId) + 1 : 0;
         return `<button class="live-chip ${stp.key} ${sel ? 'sel' : ''}" data-chip="${s.sessionId}" title="${esc(s.title || s.project || '')}">
             <span class="chip-dot ${stp.key}"></span>
@@ -505,14 +518,14 @@ function renderSimple(data) {
     html += `
       <div class="live-bar">
         <div class="live-bar-head">
-          <span class="live-bar-title">🟢 稼働中・返信待ち（クリックで詳細）・${liveSessions.length}件</span>
+          <span class="live-bar-title">🟢 稼働中・返信待ち（クリックで詳細）・${chipSessions.length}件</span>
           <button class="split-btn ${splitMode ? 'on' : ''}" id="split-btn">分割表示 ${splitMode ? 'ON' : 'OFF'}</button>
         </div>
         <div class="live-chips">${chips}</div>
       </div>`;
 
     const toShow = (splitMode ? simpleSelection.slice(0, 2) : simpleSelection.slice(0, 1))
-      .map((id) => liveSessions.find((s) => s.sessionId === id))
+      .map((id) => sessions.find((s) => s.sessionId === id))
       .filter(Boolean);
     const cards = toShow.length
       ? toShow.map(simpleCard).join('')
@@ -523,9 +536,10 @@ function renderSimple(data) {
       '<div class="simple-empty">いま動いているセッションはありません。<br>Claude Code で作業を始めると、ここにリアルタイムで表示されます。</div>';
   }
 
-  if (stopped.length) {
-    html += `<div class="simple-divider">── 停止中のセッション（${stopped.length}件）──</div>`;
-    const shown = stopped.slice(0, 8);
+  const stoppedRest = stopped.filter((s) => !simpleSelection.includes(s.sessionId));
+  if (stoppedRest.length) {
+    html += `<div class="simple-divider">── 停止中のセッション（${stoppedRest.length}件）──</div>`;
+    const shown = stoppedRest.slice(0, 8);
     html += shown
       .map(
         (s) => `
@@ -536,8 +550,8 @@ function renderSimple(data) {
         </div>`
       )
       .join('');
-    if (stopped.length > shown.length) {
-      html += `<div class="simple-divider">ほか ${stopped.length - shown.length} 件</div>`;
+    if (stoppedRest.length > shown.length) {
+      html += `<div class="simple-divider">ほか ${stoppedRest.length - shown.length} 件</div>`;
     }
   }
   listEl.innerHTML = html;
