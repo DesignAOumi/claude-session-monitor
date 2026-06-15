@@ -317,10 +317,14 @@ function expandable(key, text) {
   const exp = expandedKeys.has(key);
   const long = t.length > 70 || /\n/.test(t);
   return `<div class="exp-group">
-      <div class="expandable ${exp ? 'expanded' : ''}">${esc(t)}</div>
+      <div class="expandable ${exp ? 'expanded' : ''}" data-exp-key="${esc(key)}">${esc(t)}</div>
       ${long ? `<button class="log-more" data-key="${esc(key)}">${exp ? '▲ とじる' : '▼ もっと見る（全文）'}</button>` : ''}
     </div>`;
 }
+
+// Remember scroll position of expanded full-text blocks so a 1.5s refresh
+// (which rebuilds the DOM) doesn't snap them back to the top.
+const expandScroll = new Map();
 
 // Pull bullet / numbered list items out of Claude's last reply for the task list.
 function parseTasks(text) {
@@ -555,6 +559,12 @@ function renderSimple(data) {
     }
   }
   listEl.innerHTML = html;
+
+  // Restore scroll position of any expanded full-text blocks after the rebuild.
+  listEl.querySelectorAll('.expandable.expanded[data-exp-key]').forEach((el) => {
+    const top = expandScroll.get(el.dataset.expKey);
+    if (top) el.scrollTop = top;
+  });
 }
 
 // ░░ Rendering ░░
@@ -618,8 +628,11 @@ function renderUsageStrip() {
 
   const routinePct = usage.routineTotal > 0 ? (usage.routineUsed / usage.routineTotal) * 100 : 0;
 
+  const sessSub = `⏳ リセットまで <b id="cd-session">—</b>${
+    usageWindow ? ` ・ 枠内 ${fmtTokens(usageWindow.outTokens)}生成` : ''
+  }${sp == null || sp === '' ? ' ・ <span style="color:var(--amber)">%は編集で入力</span>' : ''}`;
   document.getElementById('usage-strip').innerHTML =
-    pctCell('現在のセッション (5h)', sp, `⏳ リセットまで <b id="cd-session">—</b>`) +
+    pctCell('現在のセッション (5h)', sp, sessSub) +
     pctCell('週間制限', wp, `⏳ <b id="cd-week">—</b> (${WEEKDAY_JA[usage.weekday]} ${usage.weekhour}:00)`) +
     pctCell('利用クレジット', creditPct != null ? Math.round(creditPct) : null, creditSub, creditPct > 100 ? 'over' : '') +
     `<div class="ug">
@@ -1001,6 +1014,19 @@ async function boot() {
     if (btn) setMode(btn.dataset.mode);
   });
   wireSettings();
+
+  // Track scroll position inside expanded full-text blocks (capture phase, since
+  // scroll doesn't bubble) so refreshes can restore it.
+  document.getElementById('simple-list').addEventListener(
+    'scroll',
+    (e) => {
+      const el = e.target;
+      if (el && el.classList && el.classList.contains('expandable') && el.dataset.expKey) {
+        expandScroll.set(el.dataset.expKey, el.scrollTop);
+      }
+    },
+    true
+  );
 
   // Event delegation on the stable list: chips, split toggle, expand, checkboxes.
   document.getElementById('simple-list').addEventListener('click', (e) => {

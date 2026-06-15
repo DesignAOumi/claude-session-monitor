@@ -573,11 +573,13 @@ body.mode-detail .simple-view { display: none; }
 
 .detail-area.split {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr; /* exactly half each */
   gap: 10px;
   align-items: start;
 }
-.detail-area.split .scard { animation: none; } /* calmer when comparing two */
+/* min-width:0 stops a long line in one card from stealing width from the other */
+.detail-area.split .scard { min-width: 0; animation: none; }
+.detail-area.split .scard * { min-width: 0; }
 
 .scard-top { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .status-pill {
@@ -625,7 +627,7 @@ body.mode-detail .simple-view { display: none; }
 .chip b { color: var(--ink); font-variant-numeric: tabular-nums; }
 
 .pulse-wrap { margin-bottom: 12px; }
-.pulse-label { font-size: 10.5px; color: var(--ink-faint); letter-spacing: 1px; margin-bottom: 5px; }
+.pulse-label { font-size: 10.5px; color: var(--ink-dim); letter-spacing: 1px; margin-bottom: 5px; }
 .pulse-bars { display: flex; align-items: flex-end; gap: 3px; height: 34px; }
 .pulse-bars > span {
   flex: 1;
@@ -633,7 +635,7 @@ body.mode-detail .simple-view { display: none; }
   background: linear-gradient(180deg, var(--green), #2f5a23);
   border-radius: 2px 2px 0 0;
 }
-.pulse-bars > span.empty { background: #1a1d12; }
+.pulse-bars > span.empty { background: transparent; min-height: 0; }
 
 .scard-log { display: flex; flex-direction: column; gap: 8px; }
 .log-head { font-size: 10.5px; color: var(--ink-faint); letter-spacing: 1px; margin-bottom: 2px; }
