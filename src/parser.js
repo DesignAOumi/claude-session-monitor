@@ -13,8 +13,8 @@ function toolDetail(name, input) {
     const parts = p.split('/').filter(Boolean);
     return parts.slice(-2).join('/');
   };
-  const clip = (s, n = 160) =>
-    typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, n) : '';
+  const clip = (s, n = 400) =>
+    typeof s === 'string' ? s.replace(/[ \t]+/g, ' ').trim().slice(0, n) : '';
   switch (name) {
     case 'Read':
     case 'Edit':
@@ -63,7 +63,7 @@ function resultSnippet(content) {
       else if (b && typeof b.content === 'string') text += ' ' + b.content;
     }
   }
-  return text.replace(/\s+/g, ' ').trim().slice(0, 120);
+  return text.replace(/[ \t]+/g, ' ').trim().slice(0, 800);
 }
 
 /** Extract plain text from a message content (string or block array). */
@@ -103,6 +103,7 @@ function parseSessionFile(file, mtimeMs) {
     version: null,
     title: null,
     model: null,
+    lastAssistantText: '', // full text of Claude's most recent reply (for the waiting task-list)
     firstTs: null,
     lastTs: null,
     userMessages: 0,
@@ -189,7 +190,7 @@ function parseSessionFile(file, mtimeMs) {
           ts,
           kind: 'user',
           label: 'USER',
-          detail: t.slice(0, 200),
+          detail: t.slice(0, 1000),
         });
       }
       continue;
@@ -236,8 +237,10 @@ function parseSessionFile(file, mtimeMs) {
           } else if (lastBlock.type === 'text') {
             const t = textOf(content).trim();
             session.currentActivity = { state: 'responding', tool: null, detail: t.slice(0, 120), ts };
-            if (t)
-              pushFeed(session.feed, { ts, kind: 'assistant', label: 'CLAUDE', detail: t.slice(0, 240) });
+            if (t) {
+              session.lastAssistantText = t.slice(0, 2000);
+              pushFeed(session.feed, { ts, kind: 'assistant', label: 'CLAUDE', detail: t.slice(0, 1000) });
+            }
           }
         }
       }

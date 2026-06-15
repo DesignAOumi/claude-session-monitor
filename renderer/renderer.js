@@ -135,12 +135,15 @@ const toolDesc = (name) =>
 
 function statusPlain(s) {
   const st = s.currentActivity.state;
-  if (s.status === 'active') {
-    if (st === 'responding') return { key: 'waiting', emoji: '🟡', label: 'あなたの返信待ち' };
+  if (s.status === 'active' && st !== 'responding') {
     return { key: 'working', emoji: '🟢', label: '作業中' };
   }
-  if (s.status === 'recent' && st === 'responding')
+  // Ended on a reply (Claude is awaiting you). Keep it as "waiting" for up to 1h
+  // so the task list doesn't disappear the moment it goes idle.
+  if (st === 'responding' && s.ageMs < 60 * 60000) {
     return { key: 'waiting', emoji: '🟡', label: 'あなたの返信待ち' };
+  }
+  if (s.status === 'active') return { key: 'working', emoji: '🟢', label: '作業中' };
   return { key: 'stopped', emoji: '⚪', label: '停止中' };
 }
 
@@ -219,25 +222,89 @@ function pulseBars(feed, bins = 22) {
     .join('');
 }
 
+// Which detail blocks are expanded to full text (persists across re-renders).
+const expandedKeys = new Set();
+
+// Render a collapsible full-text block with a もっと見る / とじる toggle.
+function expandable(key, text) {
+  const t = String(text || '');
+  const exp = expandedKeys.has(key);
+  const long = t.length > 70 || /\n/.test(t);
+  return `<div class="exp-group">
+      <div class="expandable ${exp ? 'expanded' : ''}">${esc(t)}</div>
+      ${long ? `<button class="log-more" data-key="${esc(key)}">${exp ? '▲ とじる' : '▼ もっと見る（全文）'}</button>` : ''}
+    </div>`;
+}
+
+// Pull bullet / numbered list items out of Claude's last reply for the task list.
+function parseTasks(text) {
+  if (!text) return { intro: '', items: [] };
+  const lines = String(text).split(/\r?\n/);
+  const bullet = /^\s*(?:[-*・▢□☐✓·]|[0-9０-９]{1,2}[.)、:]|[①-⑳]|[(（][0-9a-zA-Zａ-ｚ][)）])\s*(.+)$/;
+  const items = [];
+  const introLines = [];
+  let started = false;
+  for (const ln of lines) {
+    const m = ln.match(bullet);
+    if (m) {
+      started = true;
+      const t = m[1].trim();
+      if (t) items.push(t);
+    } else if (!started && ln.trim()) {
+      introLines.push(ln.trim());
+    }
+  }
+  return { intro: introLines.join(' ').slice(0, 280), items: items.slice(0, 12) };
+}
+
 function simpleCard(s) {
   const st = statusPlain(s);
-  const act = activityPlain(s);
+  const waiting = st.key === 'waiting';
+  const act = waiting
+    ? { emoji: '✋', text: 'あなたの返答を待っています', detail: '' }
+    : activityPlain(s);
   const fileOps =
     (s.tools.Read || 0) + (s.tools.Edit || 0) + (s.tools.Write || 0) + (s.tools.NotebookEdit || 0);
+
   const logs = [...s.feed]
     .reverse()
     .slice(0, 8)
-    .map((item) => {
+    .map((item, idx) => {
       const p = feedPlain(item);
+      const key = `${s.sessionId}|log|${item.ts || ''}|${idx}`;
       return `<div class="log-item">
         <span class="log-emoji">${p.emoji}</span>
         <div class="log-body">
           <div class="log-line"><span class="log-tag">${esc(p.txt)}</span><span class="log-time">${fmtAgoJa(item.ts)}</span></div>
-          ${p.detail ? `<div class="log-detail">${esc(p.detail)}</div>` : ''}
+          ${p.detail ? expandable(key, p.detail) : ''}
         </div>
       </div>`;
     })
     .join('');
+
+  // Task-list block shown only while Claude is waiting on the user.
+  let pending = '';
+  if (waiting) {
+    const { intro, items } = parseTasks(s.lastAssistantText);
+    const taskHtml = items.length
+      ? `<div class="task-list">${items
+          .map(
+            (it) =>
+              `<div class="task-item"><span class="task-box">☐</span><span class="task-txt">${esc(it)}</span></div>`
+          )
+          .join('')}</div>`
+      : '';
+    pending = `
+      <div class="pending-box">
+        <div class="pending-head">✋ あなたの返答・指示を待っています</div>
+        ${intro ? `<div class="pending-intro">${esc(intro)}</div>` : ''}
+        ${taskHtml}
+        <div class="pending-msg">
+          <div class="pending-msg-label">Claudeからのメッセージ</div>
+          ${expandable(`${s.sessionId}|pending`, s.lastAssistantText || '（本文なし）')}
+        </div>
+      </div>`;
+  }
 
   return `
     <div class="scard ${st.key}">
@@ -251,6 +318,7 @@ function simpleCard(s) {
         <span class="now-text">${esc(act.text)}</span>
         ${act.detail ? `<span class="now-detail">${esc(act.detail)}</span>` : ''}
       </div>
+      ${pending}
       <div class="scard-chips">
         <span class="chip">⏱ 作業時間 <b>${fmtDurationJa(s.durationMs)}</b></span>
         <span class="chip">👣 ステップ数 <b>${s.toolCalls}</b></span>
@@ -674,6 +742,23 @@ async function boot() {
     if (btn) setMode(btn.dataset.mode);
   });
   wireSettings();
+
+  // Expand / collapse full-text detail blocks (event delegation on the stable list).
+  document.getElementById('simple-list').addEventListener('click', (e) => {
+    const more = e.target.closest('.log-more');
+    if (!more) return;
+    const key = more.dataset.key;
+    const block = more.previousElementSibling;
+    if (expandedKeys.has(key)) {
+      expandedKeys.delete(key);
+      if (block) block.classList.remove('expanded');
+      more.textContent = '▼ もっと見る（全文）';
+    } else {
+      expandedKeys.add(key);
+      if (block) block.classList.add('expanded');
+      more.textContent = '▲ とじる';
+    }
+  });
 
   tickClock();
   setInterval(tickClock, 1000);

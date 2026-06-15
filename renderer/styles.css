@@ -477,17 +477,64 @@ body.mode-detail .simple-view { display: none; }
 .log-line { display: flex; align-items: baseline; gap: 8px; }
 .log-tag { color: var(--amber-soft); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .log-time { margin-left: auto; color: var(--ink-faint); font-size: 10.5px; white-space: nowrap; }
-.log-detail {
+.exp-group { margin-top: 2px; }
+.expandable {
   color: var(--ink);
   font-size: 12.5px;
-  line-height: 1.5;
-  margin-top: 2px;
+  line-height: 1.55;
   word-break: break-word;
+  white-space: pre-wrap;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.expandable.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  max-height: 340px;
+  overflow-y: auto;
+  background: #0c0e07;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+.log-more {
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--amber-soft);
+  background: none;
+  border: none;
+  padding: 3px 0 0;
+  cursor: pointer;
+}
+.log-more:hover { color: var(--amber); }
+
+/* ░░ Waiting: task list ░░ */
+.pending-box {
+  background: rgba(240, 168, 48, 0.07);
+  border: 1px solid rgba(240, 168, 48, 0.4);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.pending-head { color: var(--amber); font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+.pending-intro { color: var(--ink); font-size: 13px; line-height: 1.6; margin-bottom: 10px; }
+.task-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  background: #0e1009;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 11px;
+  font-size: 13px;
+}
+.task-item .task-box { color: var(--amber); font-size: 14px; line-height: 1.4; }
+.task-item .task-txt { color: var(--ink); line-height: 1.5; word-break: break-word; }
+.pending-msg { margin-top: 4px; }
+.pending-msg-label { color: var(--ink-faint); font-size: 10.5px; letter-spacing: 1px; margin-bottom: 4px; }
 
 /* compact (stopped) cards */
 .scard-compact {
