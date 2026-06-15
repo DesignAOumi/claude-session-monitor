@@ -120,8 +120,41 @@ function aggregate(sessions, now) {
   stats.feed = stats.feed.slice(0, 60);
 
   stats.sessionWindow = computeUsageWindow(sessions, now);
+  stats.rateLimits = readRateLimits();
 
   return stats;
+}
+
+// Read the usage JSON captured by the statusLine hook (scripts/statusline-usage.sh).
+// Contains Claude.ai subscription rate limits that exist only in live API
+// responses — five_hour / seven_day { used_percentage, resets_at } — so the
+// monitor can show real usage automatically. Returns null if not set up yet.
+const USAGE_FILE = path.join(os.homedir(), '.claude', 'claude-monitor-usage.json');
+function readRateLimits() {
+  let st;
+  try {
+    st = fs.statSync(USAGE_FILE);
+  } catch {
+    return null;
+  }
+  let obj;
+  try {
+    obj = JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8'));
+  } catch {
+    return null;
+  }
+  const rl = obj && obj.rate_limits;
+  if (!rl) return { available: false, capturedAt: st.mtimeMs };
+  const norm = (w) =>
+    w && typeof w.used_percentage === 'number'
+      ? { pct: w.used_percentage, resetTs: w.resets_at ? w.resets_at * 1000 : null }
+      : null;
+  return {
+    available: true,
+    capturedAt: st.mtimeMs,
+    fiveHour: norm(rl.five_hour),
+    sevenDay: norm(rl.seven_day),
+  };
 }
 
 // Estimate Claude's rolling 5-hour "current session" window from message

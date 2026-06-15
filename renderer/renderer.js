@@ -51,6 +51,7 @@ const USAGE_DEFAULT = {
 };
 let usage = loadUsage();
 let usageWindow = null; // latest 5h-window info from the scanner (for live countdown)
+let autoLimits = null; // real rate limits captured via the statusLine hook (if set up)
 
 function loadUsage() {
   try {
@@ -594,6 +595,7 @@ function render(data) {
 
   renderSimple(data);
   usageWindow = data.stats.sessionWindow || null;
+  autoLimits = data.stats.rateLimits || null;
   renderUsageStrip();
 }
 
@@ -630,12 +632,29 @@ function renderUsageStrip() {
 
   const routinePct = usage.routineTotal > 0 ? (usage.routineUsed / usage.routineTotal) * 100 : 0;
 
-  const sessSub = `⏳ リセットまで <b id="cd-session">—</b>${
-    usageWindow ? ` ・ 枠内 ${fmtTokens(usageWindow.outTokens)}生成` : ''
-  }${sp == null || sp === '' ? ' ・ <span style="color:var(--amber)">%は編集で入力</span>' : ''}`;
+  // Prefer the real rate limits captured via the statusLine hook; fall back to
+  // the manually-entered values + the locally-estimated 5h window.
+  const auto = autoLimits && autoLimits.available;
+  const fh = auto ? autoLimits.fiveHour : null;
+  const sd = auto ? autoLimits.sevenDay : null;
+  const sessionPctShown = fh ? Math.round(fh.pct) : sp;
+  const weekPctShown = sd ? Math.round(sd.pct) : wp;
+  const autoTag = auto
+    ? `<span style="color:var(--green)">自動取得 ${fmtAgoJa(autoLimits.capturedAt)}</span>`
+    : '';
+
+  const sessSub = fh
+    ? `⏳ リセットまで <b id="cd-session">—</b> ・ ${autoTag}`
+    : `⏳ リセットまで <b id="cd-session">—</b>${usageWindow ? ` ・ 枠内 ${fmtTokens(usageWindow.outTokens)}生成` : ''}${
+        sp == null || sp === '' ? ' ・ <span style="color:var(--amber)">自動取得待ち / %は編集で入力</span>' : ''
+      }`;
+  const weekSub = sd
+    ? `⏳ <b id="cd-week">—</b> ・ ${autoTag}`
+    : `⏳ <b id="cd-week">—</b> (${WEEKDAY_JA[usage.weekday]} ${usage.weekhour}:00)`;
+
   document.getElementById('usage-strip').innerHTML =
-    pctCell('現在のセッション (5h)', sp, sessSub) +
-    pctCell('週間制限', wp, `⏳ <b id="cd-week">—</b> (${WEEKDAY_JA[usage.weekday]} ${usage.weekhour}:00)`) +
+    pctCell('現在のセッション (5h)', sessionPctShown, sessSub) +
+    pctCell('週間制限', weekPctShown, weekSub) +
     pctCell('利用クレジット', creditPct != null ? Math.round(creditPct) : null, creditSub, creditPct > 100 ? 'over' : '') +
     `<div class="ug">
       <div class="ug-top"><span class="ug-label">ルーティン/日</span><span class="ug-pct">${usage.routineUsed}/${usage.routineTotal}</span></div>
@@ -650,15 +669,24 @@ function renderUsageStrip() {
 }
 
 function updateCountdowns() {
+  const fh = autoLimits && autoLimits.available ? autoLimits.fiveHour : null;
+  const sd = autoLimits && autoLimits.available ? autoLimits.sevenDay : null;
+
   const cdS = document.getElementById('cd-session');
   if (cdS) {
-    const rem = usageWindow && !usageWindow.expired ? usageWindow.resetTs - Date.now() : null;
-    cdS.textContent = usageWindow ? fmtCountdown(rem) : 'アクティブな枠なし';
+    let rem = null;
+    if (fh && fh.resetTs) rem = fh.resetTs - Date.now(); // exact reset from the API
+    else if (usageWindow && !usageWindow.expired) rem = usageWindow.resetTs - Date.now(); // estimate
+    cdS.textContent = fh || usageWindow ? fmtCountdown(rem) : 'アクティブな枠なし';
     const sub = cdS.closest('.ug-sub');
     if (sub) sub.classList.toggle('urgent', rem != null && rem < 15 * 60000);
   }
   const cdW = document.getElementById('cd-week');
-  if (cdW) cdW.textContent = fmtCountdown(nextWeeklyReset(usage.weekday, usage.weekhour) - Date.now());
+  if (cdW) {
+    const rem =
+      sd && sd.resetTs ? sd.resetTs - Date.now() : nextWeeklyReset(usage.weekday, usage.weekhour) - Date.now();
+    cdW.textContent = fmtCountdown(rem);
+  }
 }
 
 // ░░ Settings modal ░░
