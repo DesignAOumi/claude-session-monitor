@@ -4,6 +4,10 @@
 let latest = null;
 let selectedId = null;
 let userPinned = false; // true once the user clicks a row
+let mode = 'simple'; // 'simple' (beginner) | 'detail' (technical)
+
+// USD -> JPY conversion for the beginner-friendly money display (rough estimate).
+const USD_JPY = 155;
 
 // ░░ Formatters ░░
 const fmtTokens = (n) => {
@@ -33,6 +37,35 @@ const hhmmss = (ts) => {
   if (!ts) return '--:--:--';
   const d = new Date(ts);
   return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+};
+
+// Money in JPY (estimate) with the USD figure in parentheses.
+const fmtMoney = (usd) => {
+  if (!usd || usd <= 0) return '—';
+  const yen = Math.round(usd * USD_JPY);
+  const yenStr = yen >= 1 ? yen.toLocaleString() + '円' : '1円未満';
+  const usdStr = usd >= 1 ? '$' + usd.toFixed(2) : '$' + usd.toFixed(3);
+  return `約${yenStr} <em>(${usdStr})</em>`;
+};
+
+// Relative time in Japanese.
+const fmtAgoJa = (ts) => {
+  if (!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 5) return 'たった今';
+  if (s < 60) return `${s}秒前`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}分前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}時間前`;
+  return `${Math.floor(h / 24)}日前`;
+};
+const fmtDurationJa = (ms) => {
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return '1分未満';
+  if (m < 60) return `${m}分`;
+  const h = Math.floor(m / 60);
+  return `${h}時間${m % 60}分`;
 };
 
 const modelShort = (m) => {
@@ -71,6 +104,207 @@ const ACTIVITY_CLASS = {
 const esc = (s) =>
   String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+// ░░ Plain-language mapping (beginner view) ░░
+const TOOL_MAP = {
+  Read: { emoji: '📖', now: 'ファイルを読んでいます', past: 'ファイルを読みました' },
+  Edit: { emoji: '✏️', now: 'ファイルを編集しています', past: 'ファイルを編集しました' },
+  Write: { emoji: '📝', now: 'ファイルを作成しています', past: 'ファイルを作成しました' },
+  NotebookEdit: { emoji: '✏️', now: 'ノートを編集しています', past: 'ノートを編集しました' },
+  Bash: { emoji: '💻', now: 'コマンドを実行しています', past: 'コマンドを実行しました' },
+  Grep: { emoji: '🔍', now: 'コードを検索しています', past: 'コードを検索しました' },
+  Glob: { emoji: '🔍', now: 'ファイルを探しています', past: 'ファイルを探しました' },
+  Task: { emoji: '🤝', now: 'サブ作業を任せています', past: 'サブ作業を任せました' },
+  Agent: { emoji: '🤝', now: 'サブ作業を任せています', past: 'サブ作業を任せました' },
+  WebFetch: { emoji: '🌐', now: 'ウェブページを読んでいます', past: 'ウェブページを読みました' },
+  WebSearch: { emoji: '🌐', now: 'ウェブで検索しています', past: 'ウェブで検索しました' },
+  TodoWrite: { emoji: '📋', now: 'やることを整理しています', past: 'やることを整理しました' },
+  TaskCreate: { emoji: '📋', now: 'タスクを作成しています', past: 'タスクを作成しました' },
+};
+const toolDesc = (name) =>
+  TOOL_MAP[name] || { emoji: '🔧', now: 'ツールを使っています', past: 'ツールを使いました' };
+
+function statusPlain(s) {
+  const st = s.currentActivity.state;
+  if (s.status === 'active') {
+    if (st === 'responding') return { key: 'waiting', emoji: '🟡', label: 'あなたの返信待ち' };
+    return { key: 'working', emoji: '🟢', label: '作業中' };
+  }
+  if (s.status === 'recent' && st === 'responding')
+    return { key: 'waiting', emoji: '🟡', label: 'あなたの返信待ち' };
+  return { key: 'stopped', emoji: '⚪', label: '停止中' };
+}
+
+function activityPlain(s) {
+  if (s.status === 'idle') return { emoji: '💤', text: '待機しています', detail: '' };
+  const st = s.currentActivity.state;
+  const detail = s.currentActivity.detail || '';
+  switch (st) {
+    case 'thinking':
+      return { emoji: '🤔', text: '考えています', detail: '' };
+    case 'responding':
+      return { emoji: '💬', text: '返事を書いています', detail: '' };
+    case 'processing':
+      return { emoji: '⚙️', text: '結果を確認しています', detail: '' };
+    case 'awaiting':
+      return { emoji: '📥', text: '指示を受け取りました', detail: '' };
+    case 'tool-error':
+      return { emoji: '⚠️', text: 'エラーに対応しています', detail: '' };
+    case 'running': {
+      const d = toolDesc(s.currentActivity.tool);
+      return { emoji: d.emoji, text: d.now, detail };
+    }
+    default:
+      return { emoji: '🔧', text: '作業しています', detail: '' };
+  }
+}
+
+function feedPlain(item) {
+  switch (item.kind) {
+    case 'user':
+      return { emoji: '🙋', txt: 'あなたが指示しました', detail: item.detail || '' };
+    case 'assistant':
+      return { emoji: '💬', txt: '返信しました', detail: '' };
+    case 'result':
+      return { emoji: '✅', txt: '結果を受け取りました', detail: '' };
+    case 'error':
+      return { emoji: '⚠️', txt: 'エラーがありました', detail: '' };
+    case 'tool': {
+      const d = toolDesc(item.label);
+      return { emoji: d.emoji, txt: d.past, detail: item.detail || '' };
+    }
+    default:
+      return { emoji: '•', txt: item.label || '', detail: item.detail || '' };
+  }
+}
+
+// Activity "pulse": bucket recent feed events into bars so momentum is visible.
+function pulseBars(feed, bins = 22) {
+  if (!feed || feed.length < 2) {
+    return Array.from({ length: bins }, () => '<span class="empty"></span>').join('');
+  }
+  const t0 = feed[0].ts || 0;
+  const t1 = Math.max(feed[feed.length - 1].ts || t0, Date.now());
+  const span = t1 - t0 || 1;
+  const counts = new Array(bins).fill(0);
+  for (const f of feed) {
+    if (!f.ts) continue;
+    let i = Math.floor(((f.ts - t0) / span) * bins);
+    if (i >= bins) i = bins - 1;
+    if (i < 0) i = 0;
+    counts[i] += 1;
+  }
+  const max = Math.max(...counts, 1);
+  return counts
+    .map((c) => {
+      if (!c) return '<span class="empty"></span>';
+      const h = Math.max(8, Math.round((c / max) * 100));
+      return `<span style="height:${h}%"></span>`;
+    })
+    .join('');
+}
+
+function simpleCard(s) {
+  const st = statusPlain(s);
+  const act = activityPlain(s);
+  const fileOps =
+    (s.tools.Read || 0) + (s.tools.Edit || 0) + (s.tools.Write || 0) + (s.tools.NotebookEdit || 0);
+  const logs = [...s.feed]
+    .reverse()
+    .slice(0, 5)
+    .map((item) => {
+      const p = feedPlain(item);
+      return `<div class="log-item">
+        <span class="log-emoji">${p.emoji}</span>
+        <span class="log-txt">${esc(p.txt)}</span>
+        ${p.detail ? `<span class="now-detail" style="flex:0 1 auto">${esc(p.detail)}</span>` : ''}
+        <span class="log-time">${fmtAgoJa(item.ts)}</span>
+      </div>`;
+    })
+    .join('');
+
+  return `
+    <div class="scard ${st.key}">
+      <div class="scard-top">
+        <span class="status-pill ${st.key}">${st.emoji} ${st.label}</span>
+        <span class="scard-proj">${esc(s.project || '—')}</span>
+        <span class="scard-money">${fmtMoney(s.cost)}</span>
+      </div>
+      <div class="scard-title">いま取り組んでいること: <b>${esc(s.title || s.project || '—')}</b></div>
+      <div class="scard-now">
+        <span class="now-icon">${act.emoji}</span>
+        <span class="now-text">${esc(act.text)}</span>
+        ${act.detail ? `<span class="now-detail">${esc(act.detail)}</span>` : ''}
+      </div>
+      <div class="scard-chips">
+        <span class="chip">⏱ 作業時間 <b>${fmtDurationJa(s.durationMs)}</b></span>
+        <span class="chip">👣 ステップ数 <b>${s.toolCalls}</b></span>
+        <span class="chip">📂 ファイル操作 <b>${fileOps}</b></span>
+        <span class="chip">🙋 あなたの指示 <b>${s.userMessages}</b></span>
+        <span class="chip">🕒 最終活動 <b>${fmtAgoJa(s.mtimeMs)}</b></span>
+      </div>
+      <div class="pulse-wrap">
+        <div class="pulse-label">活動の波（最近の動きの多さ）</div>
+        <div class="pulse-bars">${pulseBars(s.feed)}</div>
+      </div>
+      <div class="scard-log">
+        <div class="log-head">やったこと（新しい順）</div>
+        ${logs || '<div class="log-item">まだ記録がありません</div>'}
+      </div>
+    </div>`;
+}
+
+function renderSimple(data) {
+  const { sessions, stats } = data;
+  let working = 0;
+  let waiting = 0;
+  const live = [];
+  const stopped = [];
+  for (const s of sessions) {
+    const k = statusPlain(s).key;
+    if (k === 'working') working += 1;
+    if (k === 'waiting') waiting += 1;
+    if (k === 'stopped') stopped.push(s);
+    else live.push(s);
+  }
+
+  // Summary banner
+  document.getElementById('simple-summary').innerHTML = `
+    <div class="sum-item working"><span class="sum-num">${working}</span><span class="sum-lbl">件が作業中</span></div>
+    <div class="sum-item waiting"><span class="sum-num">${waiting}</span><span class="sum-lbl">件があなたの返信待ち</span></div>
+    <div class="sum-item"><span class="sum-num">${sessions.length}</span><span class="sum-lbl">件を記録中</span></div>
+    <div class="sum-spacer"></div>
+    <div class="sum-money">これまでの推定利用料金 <b>${fmtMoney(stats.totalCost)}</b></div>`;
+
+  // Cards: live (working / waiting) first, then a compact list of stopped ones.
+  const listEl = document.getElementById('simple-list');
+  let html = '';
+  if (live.length) {
+    html += live.map(simpleCard).join('');
+  } else {
+    html +=
+      '<div class="simple-empty">いま動いているセッションはありません。<br>Claude Code で作業を始めると、ここにリアルタイムで表示されます。</div>';
+  }
+
+  if (stopped.length) {
+    html += `<div class="simple-divider">── 停止中のセッション（${stopped.length}件）──</div>`;
+    const shown = stopped.slice(0, 8);
+    html += shown
+      .map(
+        (s) => `
+        <div class="scard-compact">
+          <span class="status-pill stopped">⚪ 停止中</span>
+          <span class="scard-proj">${esc(s.project || '—')}</span>
+          <span class="muted">最後の活動: ${fmtAgoJa(s.mtimeMs)} ・ ${fmtMoney(s.cost)}</span>
+        </div>`
+      )
+      .join('');
+    if (stopped.length > shown.length) {
+      html += `<div class="simple-divider">ほか ${stopped.length - shown.length} 件</div>`;
+    }
+  }
+  listEl.innerHTML = html;
+}
+
 // ░░ Rendering ░░
 function render(data) {
   if (!data || data.error) return;
@@ -93,6 +327,18 @@ function render(data) {
   renderDetail(sel);
   renderCycle(sel);
   drawCostChart(sel);
+
+  renderSimple(data);
+}
+
+function setMode(m) {
+  mode = m;
+  document.body.classList.toggle('mode-simple', m === 'simple');
+  document.body.classList.toggle('mode-detail', m === 'detail');
+  document
+    .querySelectorAll('.mode-btn')
+    .forEach((b) => b.classList.toggle('active', b.dataset.mode === m));
+  if (latest) render(latest);
 }
 
 function renderRibbon(s) {
@@ -352,6 +598,12 @@ function tickClock() {
 
 // ░░ Boot ░░
 async function boot() {
+  document.body.classList.add('mode-simple');
+  document.getElementById('mode-toggle').addEventListener('click', (e) => {
+    const btn = e.target.closest('.mode-btn');
+    if (btn) setMode(btn.dataset.mode);
+  });
+
   tickClock();
   setInterval(tickClock, 1000);
 

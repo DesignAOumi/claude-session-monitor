@@ -10,7 +10,20 @@ multi-panel dashboard. Read-only: it never modifies your Claude data.
 > Run `npm start` to see it live. To add a screenshot here, capture the window
 > and drop it at `docs/screenshot.png`, then reference it in this README.
 
-## Features
+## Two views
+
+Switch anytime with the **しんぷる / くわしく** toggle in the top bar.
+
+- **しんぷる (Simple)** — beginner-friendly. Answers the only three questions a newcomer
+  has: *Do I need to do something?* / *What is it doing right now?* / *How far has it got?*
+  - Big status pill per session: 🟢 **作業中** (working) · 🟡 **あなたの返信待ち** (waiting for you) · ⚪ **停止中** (stopped)
+  - "Now doing…" in plain words with an icon (📖 reading a file, 💻 running a command, 🤔 thinking…)
+  - Plain-language activity log ("✏️ edited a file — 2 min ago")
+  - Honest progress proxies: working time, number of steps, files touched, your message count, and an **activity pulse** sparkline
+  - Money shown in yen with the USD figure: `約2,100円 ($13.97)`
+- **くわしく (Detail)** — the technical trading-terminal dashboard described below.
+
+## Features (Detail view)
 
 - **All-projects session list** — every session under `~/.claude/projects`, newest first,
   with a live status dot: 🟢 active (touched <30s), 🟡 recent (<5min), ⚪ idle.

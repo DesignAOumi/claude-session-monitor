@@ -6,7 +6,7 @@
     <title>Claude Session Monitor</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="mode-simple">
     <!-- ░░ TOP BAR ░░ -->
     <header class="topbar">
       <div class="brand">
@@ -16,12 +16,22 @@
         <span class="brand-sub">MONITOR</span>
       </div>
       <div class="ticker" id="ticker"><div class="ticker-track" id="ticker-track"></div></div>
+      <div class="mode-toggle" id="mode-toggle">
+        <button class="mode-btn active" data-mode="simple">しんぷる</button>
+        <button class="mode-btn" data-mode="detail">くわしく</button>
+      </div>
       <div class="clock">
         <span class="live" id="live-dot">● LIVE</span>
         <span class="time" id="clock-local">--:--:--</span>
         <span class="time-utc" id="clock-utc">UTC --:--</span>
       </div>
     </header>
+
+    <!-- ░░ SIMPLE (BEGINNER) VIEW ░░ -->
+    <div class="simple-view" id="simple-view">
+      <div class="simple-summary" id="simple-summary"></div>
+      <div class="simple-list" id="simple-list"></div>
+    </div>
 
     <!-- ░░ STAT RIBBON ░░ -->
     <section class="ribbon" id="ribbon">
