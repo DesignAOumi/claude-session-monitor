@@ -33,7 +33,8 @@ Switch anytime with the **しんぷる / くわしく** toggle in the top bar.
   - Big status pill per session: 🟢 **作業中** (working) · 🟡 **あなたの返信待ち** (waiting for you) · ⚪ **停止中** (stopped)
   - "Now doing…" in plain words with an icon (📖 reading a file, 💻 running a command, 🤔 thinking…)
   - Plain-language activity log with the **real content** (Claude's reply text, the actual Bash command, result/error snippets) — each entry expands to full text with a もっと見る toggle
-  - When a session is **waiting on you**, its last reply is shown as a **task list** (bullets / numbered items are pulled out as checklist items) so you can see what to answer
+  - **Actively-running** sessions are emphasized (green glow) and pinned to the top of the list
+  - When a session is **waiting on you**, its last reply is split into **確認事項** (questions you need to answer) and a **やることリスト** (to-dos). The to-dos are real checkboxes — click to check them off (purely visual, no side effects; the checked state is remembered)
   - Honest progress proxies: working time, number of steps, files touched, your message count, and an **activity pulse** sparkline
   - **Actual cost** you configure (flat plan fee + any additional charge) — not a token-based guess
 - **くわしく (Detail)** — the technical trading-terminal dashboard described below.

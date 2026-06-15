@@ -281,6 +281,34 @@ function pulseBars(feed, bins = 22) {
 // Which detail blocks are expanded to full text (persists across re-renders).
 const expandedKeys = new Set();
 
+// Checked task items — purely visual, no action; persisted so checks survive restarts.
+const checkedKeys = new Set(loadChecked());
+function loadChecked() {
+  try {
+    const raw = localStorage.getItem('cm_checked');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+function saveChecked() {
+  try {
+    localStorage.setItem('cm_checked', JSON.stringify([...checkedKeys]));
+  } catch {}
+}
+const checkKey = (sessionId, text) => `${sessionId}::${String(text).trim().slice(0, 80)}`;
+
+// Split Claude's last reply into 確認事項 (questions to answer) and やること (to-dos).
+function parseWaiting(text) {
+  const { intro, items } = parseTasks(text);
+  const isQuestion = (s) =>
+    /[?？]\s*$/.test(s) || /(ですか|ますか|でしょうか|どちら|どれ|いずれ|いかが)/.test(s);
+  const questions = [];
+  const todos = [];
+  if (intro && isQuestion(intro)) questions.push(intro);
+  for (const it of items) (isQuestion(it) ? questions : todos).push(it);
+  return { intro, questions, todos, hasList: items.length > 0 };
+}
+
 // Render a collapsible full-text block with a もっと見る / とじる toggle.
 function expandable(key, text) {
   const t = String(text || '');
@@ -341,22 +369,46 @@ function simpleCard(s) {
   // Task-list block shown only while Claude is waiting on the user.
   let pending = '';
   if (waiting) {
-    const { intro, items } = parseTasks(s.lastAssistantText);
-    const taskHtml = items.length
-      ? `<div class="task-list">${items
-          .map(
-            (it) =>
-              `<div class="task-item"><span class="task-box">☐</span><span class="task-txt">${esc(it)}</span></div>`
-          )
-          .join('')}</div>`
+    const { questions, todos, hasList } = parseWaiting(s.lastAssistantText);
+
+    const confirmHtml = questions.length
+      ? `<div class="sect-label confirm">❓ 確認事項（あなたの返答が必要）</div>
+         <div class="confirm-list">${questions
+           .map((q) => `<div class="confirm-item">${esc(q)}</div>`)
+           .join('')}</div>`
       : '';
+
+    const todoHtml = todos.length
+      ? `<div class="sect-label todo">✅ やることリスト</div>
+         <div class="task-list">${todos
+           .map((it) => {
+             const k = checkKey(s.sessionId, it);
+             const on = checkedKeys.has(k);
+             return `<div class="task-item ${on ? 'checked' : ''}" data-check="${esc(k)}">
+                <span class="task-box">${on ? '☑' : '☐'}</span>
+                <span class="task-txt">${esc(it)}</span>
+              </div>`;
+           })
+           .join('')}</div>`
+      : '';
+
+    // Fallback: a prose message with no parsable list/question.
+    const fallback =
+      !questions.length && !todos.length
+        ? `<div class="sect-label confirm">❓ 確認事項</div>
+           <div class="confirm-list"><div class="confirm-item">${esc(
+             (s.lastAssistantText || '（本文なし）').slice(0, 240)
+           )}</div></div>`
+        : '';
+
     pending = `
       <div class="pending-box">
         <div class="pending-head">✋ あなたの返答・指示を待っています</div>
-        ${intro ? `<div class="pending-intro">${esc(intro)}</div>` : ''}
-        ${taskHtml}
+        ${confirmHtml}
+        ${todoHtml}
+        ${fallback}
         <div class="pending-msg">
-          <div class="pending-msg-label">Claudeからのメッセージ</div>
+          <div class="pending-msg-label">Claudeからのメッセージ（全文）</div>
           ${expandable(`${s.sessionId}|pending`, s.lastAssistantText || '（本文なし）')}
         </div>
       </div>`;
@@ -395,17 +447,17 @@ function simpleCard(s) {
 
 function renderSimple(data) {
   const { sessions, stats } = data;
-  let working = 0;
-  let waiting = 0;
-  const live = [];
+  const workingList = [];
+  const waitingList = [];
   const stopped = [];
   for (const s of sessions) {
     const k = statusPlain(s).key;
-    if (k === 'working') working += 1;
-    if (k === 'waiting') waiting += 1;
-    if (k === 'stopped') stopped.push(s);
-    else live.push(s);
+    if (k === 'working') workingList.push(s);
+    else if (k === 'waiting') waitingList.push(s);
+    else stopped.push(s);
   }
+  const working = workingList.length;
+  const waiting = waitingList.length;
 
   // Summary banner
   document.getElementById('simple-summary').innerHTML = `
@@ -419,12 +471,19 @@ function renderSimple(data) {
   const sumEdit = document.getElementById('sum-edit');
   if (sumEdit) sumEdit.addEventListener('click', openSettings);
 
-  // Cards: live (working / waiting) first, then a compact list of stopped ones.
+  // Cards: actively-running sessions are emphasized and pinned to the very top,
+  // then waiting sessions, then a compact list of stopped ones.
   const listEl = document.getElementById('simple-list');
   let html = '';
-  if (live.length) {
-    html += live.map(simpleCard).join('');
-  } else {
+  if (working) {
+    html += `<div class="pin-divider running">🟢 稼働中（いま動いています）・${working}件</div>`;
+    html += workingList.map(simpleCard).join('');
+  }
+  if (waiting) {
+    html += `<div class="pin-divider waiting-div">🟡 あなたの返信待ち・${waiting}件</div>`;
+    html += waitingList.map(simpleCard).join('');
+  }
+  if (!working && !waiting) {
     html +=
       '<div class="simple-empty">いま動いているセッションはありません。<br>Claude Code で作業を始めると、ここにリアルタイムで表示されます。</div>';
   }
@@ -894,20 +953,38 @@ async function boot() {
   });
   wireSettings();
 
-  // Expand / collapse full-text detail blocks (event delegation on the stable list).
+  // Event delegation on the stable list: expand/collapse details + toggle checkboxes.
   document.getElementById('simple-list').addEventListener('click', (e) => {
     const more = e.target.closest('.log-more');
-    if (!more) return;
-    const key = more.dataset.key;
-    const block = more.previousElementSibling;
-    if (expandedKeys.has(key)) {
-      expandedKeys.delete(key);
-      if (block) block.classList.remove('expanded');
-      more.textContent = '▼ もっと見る（全文）';
-    } else {
-      expandedKeys.add(key);
-      if (block) block.classList.add('expanded');
-      more.textContent = '▲ とじる';
+    if (more) {
+      const key = more.dataset.key;
+      const block = more.previousElementSibling;
+      if (expandedKeys.has(key)) {
+        expandedKeys.delete(key);
+        if (block) block.classList.remove('expanded');
+        more.textContent = '▼ もっと見る（全文）';
+      } else {
+        expandedKeys.add(key);
+        if (block) block.classList.add('expanded');
+        more.textContent = '▲ とじる';
+      }
+      return;
+    }
+    // Checkboxes: visual only, no back-action — just remember what's checked.
+    const task = e.target.closest('.task-item[data-check]');
+    if (task) {
+      const key = task.dataset.check;
+      const box = task.querySelector('.task-box');
+      if (checkedKeys.has(key)) {
+        checkedKeys.delete(key);
+        task.classList.remove('checked');
+        if (box) box.textContent = '☐';
+      } else {
+        checkedKeys.add(key);
+        task.classList.add('checked');
+        if (box) box.textContent = '☑';
+      }
+      saveChecked();
     }
   });
 
