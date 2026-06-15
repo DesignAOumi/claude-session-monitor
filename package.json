@@ -1,0 +1,22 @@
+{
+  "name": "claude-session-monitor",
+  "version": "1.0.0",
+  "description": "A real-time, trading-terminal-style dashboard for monitoring local Claude Code sessions.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "monitor",
+    "dashboard",
+    "electron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

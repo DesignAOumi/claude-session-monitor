@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+    <title>Claude Session Monitor</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ░░ TOP BAR ░░ -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◆</span>
+        <span class="brand-name">CLAUDE</span>
+        <span class="brand-x">×</span>
+        <span class="brand-sub">MONITOR</span>
+      </div>
+      <div class="ticker" id="ticker"><div class="ticker-track" id="ticker-track"></div></div>
+      <div class="clock">
+        <span class="live" id="live-dot">● LIVE</span>
+        <span class="time" id="clock-local">--:--:--</span>
+        <span class="time-utc" id="clock-utc">UTC --:--</span>
+      </div>
+    </header>
+
+    <!-- ░░ STAT RIBBON ░░ -->
+    <section class="ribbon" id="ribbon">
+      <div class="stat" data-k="active"><span class="stat-label">ACTIVE</span><span class="stat-val" id="s-active">0</span></div>
+      <div class="stat"><span class="stat-label">SESSIONS</span><span class="stat-val" id="s-total">0</span></div>
+      <div class="stat"><span class="stat-label">PROJECTS</span><span class="stat-val" id="s-projects">0</span></div>
+      <div class="stat"><span class="stat-label">EST. COST</span><span class="stat-val accent" id="s-cost">$0</span></div>
+      <div class="stat"><span class="stat-label">TOKENS</span><span class="stat-val" id="s-tokens">0</span></div>
+      <div class="stat"><span class="stat-label">TOOL CALLS</span><span class="stat-val" id="s-tools">0</span></div>
+      <div class="stat"><span class="stat-label">MESSAGES</span><span class="stat-val" id="s-msgs">0</span></div>
+    </section>
+
+    <!-- ░░ MAIN GRID ░░ -->
+    <main class="grid">
+      <!-- SESSIONS LIST -->
+      <section class="panel panel-sessions">
+        <div class="panel-head">
+          <span>▸ SESSIONS · ALL PROJECTS</span>
+          <span class="panel-meta" id="sessions-count">0 tracked</span>
+        </div>
+        <div class="sessions-head">
+          <span class="col-status"></span>
+          <span class="col-name">PROJECT / SESSION</span>
+          <span class="col-model">MODEL</span>
+          <span class="col-activity">ACTIVITY</span>
+          <span class="col-num">MSGS</span>
+          <span class="col-num">TOKENS</span>
+          <span class="col-num">COST</span>
+          <span class="col-num">AGE</span>
+        </div>
+        <div class="sessions-body" id="sessions-body"></div>
+      </section>
+
+      <!-- SELECTED SESSION DETAIL -->
+      <section class="panel panel-detail">
+        <div class="panel-head">
+          <span>▸ SESSION FOCUS</span>
+          <span class="panel-meta" id="detail-id">—</span>
+        </div>
+        <div class="detail-body" id="detail-body">
+          <div class="empty">Select a session</div>
+        </div>
+      </section>
+
+      <!-- EXECUTION CYCLE -->
+      <section class="panel panel-cycle">
+        <div class="panel-head"><span>▸ EXECUTION CYCLE</span><span class="panel-meta" id="cycle-state">idle</span></div>
+        <div class="cycle" id="cycle"></div>
+      </section>
+
+      <!-- COST GROWTH CHART -->
+      <section class="panel panel-chart">
+        <div class="panel-head"><span>▸ COST GROWTH</span><span class="panel-meta" id="chart-cost-meta">$0</span></div>
+        <canvas id="chart-cost"></canvas>
+      </section>
+
+      <!-- TOOL DISTRIBUTION -->
+      <section class="panel panel-tools">
+        <div class="panel-head"><span>▸ TOOL USAGE</span><span class="panel-meta" id="tools-meta">0 calls</span></div>
+        <div class="tools-bars" id="tools-bars"></div>
+      </section>
+
+      <!-- LIVE FEED -->
+      <section class="panel panel-feed">
+        <div class="panel-head"><span>▸ LIVE ACTIVITY FEED</span><span class="panel-meta" id="feed-meta"></span></div>
+        <div class="feed" id="feed"></div>
+      </section>
+    </main>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
