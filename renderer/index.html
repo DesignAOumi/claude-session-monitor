@@ -52,12 +52,40 @@
           <div class="input-wrap"><span class="cur-sign" id="sign-add">¥</span><input type="number" id="in-add" min="0" step="1" /></div>
         </div>
         <div class="form-hint" id="form-total">合計: —</div>
+
+        <div class="modal-section">使用量（Claudeデスクトップアプリの「使用量」タブを見て入力）</div>
+        <p class="modal-note">リセットまでのカウントダウンは自動計算します。%・クレジットはローカルから取得できないため、ここに手入力した値を表示します。</p>
+        <div class="form-grid">
+          <label>現在のセッション 使用%</label>
+          <input type="number" id="u-session" min="0" max="999" placeholder="例: 97" />
+          <label>週間 使用%</label>
+          <input type="number" id="u-week" min="0" max="999" placeholder="例: 29" />
+          <label>週間リセット 曜日</label>
+          <select id="u-weekday">
+            <option value="0">日</option><option value="1">月</option><option value="2">火</option>
+            <option value="3">水</option><option value="4">木</option><option value="5">金</option><option value="6">土</option>
+          </select>
+          <label>週間リセット 時刻(時)</label>
+          <input type="number" id="u-weekhour" min="0" max="23" placeholder="例: 3" />
+          <label>ルーティン 実行/上限</label>
+          <div class="dual"><input type="number" id="u-routine-used" min="0" placeholder="0" /><span>/</span><input type="number" id="u-routine-total" min="0" placeholder="5" /></div>
+          <label>クレジット 使用$ / 上限$</label>
+          <div class="dual"><input type="number" id="u-credit-used" min="0" step="0.01" placeholder="22.41" /><span>/</span><input type="number" id="u-credit-limit" min="0" step="0.01" placeholder="20" /></div>
+          <label>クレジット残高$</label>
+          <input type="number" id="u-credit-balance" min="0" step="0.01" placeholder="68.75" />
+          <label>クレジット リセット日</label>
+          <input type="date" id="u-credit-reset" />
+        </div>
+
         <div class="modal-actions">
           <button class="btn-ghost" id="settings-cancel">キャンセル</button>
           <button class="btn-primary" id="settings-save">保存</button>
         </div>
       </div>
     </div>
+
+    <!-- ░░ PLAN USAGE STRIP (visible in both views) ░░ -->
+    <section class="usage-strip" id="usage-strip"></section>
 
     <!-- ░░ SIMPLE (BEGINNER) VIEW ░░ -->
     <div class="simple-view" id="simple-view">

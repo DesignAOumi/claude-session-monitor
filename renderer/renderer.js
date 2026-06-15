@@ -34,6 +34,62 @@ const fmtAmount = (n, c = billing.currency) => {
 const actualTotal = () => (Number(billing.plan) || 0) + (Number(billing.additional) || 0);
 const fmtActual = () => fmtAmount(actualTotal());
 
+// ░░ Plan usage (countdowns auto, percentages/credits entered by the user) ░░
+const USAGE_DEFAULT = {
+  sessionPct: null,
+  weekPct: null,
+  weekday: 4, // Thu (matches the desktop app default)
+  weekhour: 3,
+  routineUsed: 0,
+  routineTotal: 5,
+  creditUsed: null,
+  creditLimit: null,
+  creditBalance: null,
+  creditReset: '',
+};
+let usage = loadUsage();
+let usageWindow = null; // latest 5h-window info from the scanner (for live countdown)
+
+function loadUsage() {
+  try {
+    const raw = localStorage.getItem('cm_usage');
+    if (raw) return { ...USAGE_DEFAULT, ...JSON.parse(raw) };
+  } catch {}
+  return { ...USAGE_DEFAULT };
+}
+function saveUsage(u) {
+  usage = u;
+  try {
+    localStorage.setItem('cm_usage', JSON.stringify(u));
+  } catch {}
+}
+
+const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
+const barLevel = (pct) => (pct >= 85 ? 'lvl-high' : pct >= 50 ? 'lvl-mid' : '');
+
+function fmtCountdown(ms) {
+  if (ms == null) return '—';
+  if (ms <= 0) return 'まもなくリセット';
+  let s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  s %= 86400;
+  const h = Math.floor(s / 3600);
+  s %= 3600;
+  const m = Math.floor(s / 60);
+  s %= 60;
+  const hms = `${two(h)}:${two(m)}:${two(s)}`;
+  return d > 0 ? `${d}日 ${hms}` : hms;
+}
+function nextWeeklyReset(weekday, hour) {
+  const now = new Date();
+  const r = new Date(now);
+  r.setHours(hour || 0, 0, 0, 0);
+  let diff = (weekday - now.getDay() + 7) % 7;
+  if (diff === 0 && r.getTime() <= now.getTime()) diff = 7;
+  r.setDate(now.getDate() + diff);
+  return r.getTime();
+}
+
 // ░░ Formatters ░░
 const fmtTokens = (n) => {
   if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
@@ -417,6 +473,69 @@ function render(data) {
   drawCostChart(sel);
 
   renderSimple(data);
+  usageWindow = data.stats.sessionWindow || null;
+  renderUsageStrip();
+}
+
+function renderUsageStrip() {
+  const sp = usage.sessionPct;
+  const wp = usage.weekPct;
+  const cUsed = Number(usage.creditUsed);
+  const cLimit = Number(usage.creditLimit);
+  const creditPct = cLimit > 0 ? (cUsed / cLimit) * 100 : null;
+  const winInfo = usageWindow
+    ? `枠内 ${usageWindow.msgCount}通 / ${fmtTokens(usageWindow.outTokens)} 生成`
+    : 'アクティブな枠なし';
+
+  const pctCell = (label, pct, subHtml, barExtra = '') => {
+    const has = pct != null && pct !== '' && !Number.isNaN(Number(pct));
+    const w = has ? Math.min(100, Number(pct)) : 0;
+    const lvl = has ? barLevel(Number(pct)) : '';
+    return `<div class="ug">
+      <div class="ug-top"><span class="ug-label">${label}</span><span class="ug-pct">${has ? Number(pct) + '%' : '—'}</span></div>
+      <div class="ug-bar ${lvl} ${barExtra}"><span style="width:${w}%"></span></div>
+      <div class="ug-sub">${subHtml}</div>
+    </div>`;
+  };
+
+  const creditSub = (() => {
+    if (cLimit > 0 || cUsed > 0) {
+      const bal = Number(usage.creditBalance);
+      const hasBal = usage.creditBalance !== null && usage.creditBalance !== '' && !Number.isNaN(bal);
+      const resetTxt = usage.creditReset ? ` ・ ${usage.creditReset} リセット` : '';
+      return `$${(cUsed || 0).toFixed(2)} / $${(cLimit || 0).toFixed(0)}${hasBal ? ` ・ 残高 $${bal.toFixed(2)}` : ''}${resetTxt}`;
+    }
+    return '未設定（編集から入力）';
+  })();
+
+  const routinePct = usage.routineTotal > 0 ? (usage.routineUsed / usage.routineTotal) * 100 : 0;
+
+  document.getElementById('usage-strip').innerHTML =
+    pctCell('現在のセッション (5h)', sp, `⏳ リセットまで <b id="cd-session">—</b>`) +
+    pctCell('週間制限', wp, `⏳ <b id="cd-week">—</b> (${WEEKDAY_JA[usage.weekday]} ${usage.weekhour}:00)`) +
+    pctCell('利用クレジット', creditPct != null ? Math.round(creditPct) : null, creditSub, creditPct > 100 ? 'over' : '') +
+    `<div class="ug">
+      <div class="ug-top"><span class="ug-label">ルーティン/日</span><span class="ug-pct">${usage.routineUsed}/${usage.routineTotal}</span></div>
+      <div class="ug-bar ${barLevel(routinePct)}"><span style="width:${Math.min(100, routinePct)}%"></span></div>
+      <div class="ug-sub">${winInfo}</div>
+    </div>` +
+    `<button class="ug-edit" id="usage-edit">⚙ 編集</button>`;
+
+  const ue = document.getElementById('usage-edit');
+  if (ue) ue.addEventListener('click', openSettings);
+  updateCountdowns();
+}
+
+function updateCountdowns() {
+  const cdS = document.getElementById('cd-session');
+  if (cdS) {
+    const rem = usageWindow && !usageWindow.expired ? usageWindow.resetTs - Date.now() : null;
+    cdS.textContent = usageWindow ? fmtCountdown(rem) : 'アクティブな枠なし';
+    const sub = cdS.closest('.ug-sub');
+    if (sub) sub.classList.toggle('urgent', rem != null && rem < 15 * 60000);
+  }
+  const cdW = document.getElementById('cd-week');
+  if (cdW) cdW.textContent = fmtCountdown(nextWeeklyReset(usage.weekday, usage.weekhour) - Date.now());
 }
 
 // ░░ Settings modal ░░
@@ -433,10 +552,25 @@ function refreshFormSigns() {
   document.getElementById('form-total').textContent =
     '合計: ' + fmtAmount(plan + add, formCurrency);
 }
+const setVal = (id, v) => {
+  const el = document.getElementById(id);
+  if (el) el.value = v == null ? '' : v;
+};
 function openSettings() {
   formCurrency = billing.currency;
-  document.getElementById('in-plan').value = billing.plan;
-  document.getElementById('in-add').value = billing.additional;
+  setVal('in-plan', billing.plan);
+  setVal('in-add', billing.additional);
+  // usage manual fields
+  setVal('u-session', usage.sessionPct);
+  setVal('u-week', usage.weekPct);
+  setVal('u-weekday', usage.weekday);
+  setVal('u-weekhour', usage.weekhour);
+  setVal('u-routine-used', usage.routineUsed);
+  setVal('u-routine-total', usage.routineTotal);
+  setVal('u-credit-used', usage.creditUsed);
+  setVal('u-credit-limit', usage.creditLimit);
+  setVal('u-credit-balance', usage.creditBalance);
+  setVal('u-credit-reset', usage.creditReset);
   refreshFormSigns();
   document.getElementById('settings-overlay').classList.add('open');
 }
@@ -463,6 +597,22 @@ function wireSettings() {
       currency: formCurrency,
       plan: parseFloat(document.getElementById('in-plan').value) || 0,
       additional: parseFloat(document.getElementById('in-add').value) || 0,
+    });
+    const numOrNull = (id) => {
+      const v = document.getElementById(id).value;
+      return v === '' ? null : parseFloat(v);
+    };
+    saveUsage({
+      sessionPct: numOrNull('u-session'),
+      weekPct: numOrNull('u-week'),
+      weekday: parseInt(document.getElementById('u-weekday').value, 10) || 0,
+      weekhour: parseInt(document.getElementById('u-weekhour').value, 10) || 0,
+      routineUsed: parseInt(document.getElementById('u-routine-used').value, 10) || 0,
+      routineTotal: parseInt(document.getElementById('u-routine-total').value, 10) || 0,
+      creditUsed: numOrNull('u-credit-used'),
+      creditLimit: numOrNull('u-credit-limit'),
+      creditBalance: numOrNull('u-credit-balance'),
+      creditReset: document.getElementById('u-credit-reset').value || '',
     });
     closeSettings();
     if (latest) render(latest);
@@ -732,6 +882,7 @@ function tickClock() {
   document.getElementById('clock-local').textContent = clockTime(now);
   const utc = `UTC ${two(now.getUTCHours())}:${two(now.getUTCMinutes())}`;
   document.getElementById('clock-utc').textContent = utc;
+  updateCountdowns();
 }
 
 // ░░ Boot ░░

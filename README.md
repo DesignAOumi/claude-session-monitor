@@ -10,6 +10,20 @@ multi-panel dashboard. Read-only: it never modifies your Claude data.
 > Run `npm start` to see it live. To add a screenshot here, capture the window
 > and drop it at `docs/screenshot.png`, then reference it in this README.
 
+## Plan usage strip (with reset countdowns)
+
+A strip at the top (shown in both views) mirrors the Claude desktop app's **使用量** tab:
+
+- **現在のセッション (5h)** — a live **countdown to reset**, computed automatically from
+  your message timestamps (Claude's rolling 5-hour window). Also shows messages / output
+  tokens used inside the current window.
+- **週間制限** — live countdown to the next weekly reset (configurable weekday/time, default Thu 3:00).
+- **利用クレジット** and **ルーティン/日** — usage bars.
+
+The reset countdowns are derived locally and always accurate. The percentages and credit
+figures aren't stored locally (Claude fetches them from an authenticated endpoint), so you
+enter them once via **⚙ 料金設定 → 使用量**; the app then displays them alongside the live countdowns.
+
 ## Two views
 
 Switch anytime with the **しんぷる / くわしく** toggle in the top bar.

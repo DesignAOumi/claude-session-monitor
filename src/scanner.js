@@ -119,7 +119,43 @@ function aggregate(sessions, now) {
   stats.feed.sort((a, b) => (b.ts || 0) - (a.ts || 0));
   stats.feed = stats.feed.slice(0, 60);
 
+  stats.sessionWindow = computeUsageWindow(sessions, now);
+
   return stats;
+}
+
+// Estimate Claude's rolling 5-hour "current session" window from message
+// timestamps: the window starts at the first message and resets 5h later; a
+// message after the window expires starts a new one. Returns reset time so the
+// UI can show a live countdown. The absolute % cap is opaque, so we only report
+// activity within the window (message count + output tokens), not a percentage.
+const SESSION_WINDOW_MS = 5 * 60 * 60 * 1000;
+function computeUsageWindow(sessions, now) {
+  const pts = [];
+  for (const s of sessions) {
+    let prev = 0;
+    for (const p of s.usageSeries || []) {
+      pts.push({ ts: p.ts, out: Math.max(0, p.tokens - prev) });
+      prev = p.tokens;
+    }
+  }
+  if (!pts.length) return null;
+  pts.sort((a, b) => a.ts - b.ts);
+
+  let start = null;
+  for (const p of pts) {
+    if (start === null || p.ts >= start + SESSION_WINDOW_MS) start = p.ts;
+  }
+  const resetTs = start + SESSION_WINDOW_MS;
+  let msgCount = 0;
+  let outTokens = 0;
+  for (const p of pts) {
+    if (p.ts >= start) {
+      msgCount += 1;
+      outTokens += p.out;
+    }
+  }
+  return { windowStart: start, resetTs, msgCount, outTokens, expired: now >= resetTs, windowMs: SESSION_WINDOW_MS };
 }
 
 module.exports = { scan, PROJECTS_ROOT };
