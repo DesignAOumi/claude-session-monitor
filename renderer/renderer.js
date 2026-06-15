@@ -5,6 +5,8 @@ let latest = null;
 let selectedId = null;
 let userPinned = false; // true once the user clicks a row
 let mode = 'simple'; // 'simple' (beginner) | 'detail' (technical)
+let simpleSelection = []; // sessionIds shown in the beginner detail area (1, or up to 2 when split)
+let splitMode = false; // show two session details side by side
 
 // ░░ Billing (actual cost the user is really paying) ░░
 // Token-based cost is intentionally NOT shown — Claude Code transcripts don't
@@ -471,19 +473,52 @@ function renderSimple(data) {
   const sumEdit = document.getElementById('sum-edit');
   if (sumEdit) sumEdit.addEventListener('click', openSettings);
 
-  // Cards: actively-running sessions are emphasized and pinned to the very top,
-  // then waiting sessions, then a compact list of stopped ones.
+  // Non-stopped sessions become a horizontal chip bar; selecting one shows its
+  // detail below. Up to 2 can be shown side by side when split view is on.
   const listEl = document.getElementById('simple-list');
+  const liveSessions = [...workingList, ...waitingList]; // running first
+  const liveIds = liveSessions.map((s) => s.sessionId);
+
+  // Resolve selection against the current live set.
+  simpleSelection = simpleSelection.filter((id) => liveIds.includes(id));
+  if (!simpleSelection.length && liveSessions.length) simpleSelection = [liveSessions[0].sessionId];
+  if (!splitMode && simpleSelection.length > 1) simpleSelection = simpleSelection.slice(0, 1);
+
   let html = '';
-  if (working) {
-    html += `<div class="pin-divider running">🟢 稼働中（いま動いています）・${working}件</div>`;
-    html += workingList.map(simpleCard).join('');
-  }
-  if (waiting) {
-    html += `<div class="pin-divider waiting-div">🟡 あなたの返信待ち・${waiting}件</div>`;
-    html += waitingList.map(simpleCard).join('');
-  }
-  if (!working && !waiting) {
+
+  if (liveSessions.length) {
+    const chips = liveSessions
+      .map((s) => {
+        const stp = statusPlain(s);
+        const sel = simpleSelection.includes(s.sessionId);
+        const a = stp.key === 'working' ? activityPlain(s) : { emoji: '✋' };
+        const order = sel ? simpleSelection.indexOf(s.sessionId) + 1 : 0;
+        return `<button class="live-chip ${stp.key} ${sel ? 'sel' : ''}" data-chip="${s.sessionId}" title="${esc(s.title || s.project || '')}">
+            <span class="chip-dot ${stp.key}"></span>
+            <span class="chip-proj">${esc(s.project || '—')}</span>
+            <span class="chip-act">${a.emoji}</span>
+            ${splitMode && order ? `<span class="chip-order">${order}</span>` : ''}
+          </button>`;
+      })
+      .join('');
+
+    html += `
+      <div class="live-bar">
+        <div class="live-bar-head">
+          <span class="live-bar-title">🟢 稼働中・返信待ち（クリックで詳細）・${liveSessions.length}件</span>
+          <button class="split-btn ${splitMode ? 'on' : ''}" id="split-btn">分割表示 ${splitMode ? 'ON' : 'OFF'}</button>
+        </div>
+        <div class="live-chips">${chips}</div>
+      </div>`;
+
+    const toShow = (splitMode ? simpleSelection.slice(0, 2) : simpleSelection.slice(0, 1))
+      .map((id) => liveSessions.find((s) => s.sessionId === id))
+      .filter(Boolean);
+    const cards = toShow.length
+      ? toShow.map(simpleCard).join('')
+      : '<div class="simple-empty">上のセッションを選ぶと、ここに詳細が表示されます。</div>';
+    html += `<div class="detail-area ${splitMode ? 'split' : ''}">${cards}</div>`;
+  } else {
     html +=
       '<div class="simple-empty">いま動いているセッションはありません。<br>Claude Code で作業を始めると、ここにリアルタイムで表示されます。</div>';
   }
@@ -953,8 +988,31 @@ async function boot() {
   });
   wireSettings();
 
-  // Event delegation on the stable list: expand/collapse details + toggle checkboxes.
+  // Event delegation on the stable list: chips, split toggle, expand, checkboxes.
   document.getElementById('simple-list').addEventListener('click', (e) => {
+    const splitBtn = e.target.closest('#split-btn');
+    if (splitBtn) {
+      splitMode = !splitMode;
+      if (!splitMode) simpleSelection = simpleSelection.slice(0, 1);
+      if (latest) renderSimple(latest);
+      return;
+    }
+    const chip = e.target.closest('.live-chip');
+    if (chip) {
+      const id = chip.dataset.chip;
+      if (splitMode) {
+        const i = simpleSelection.indexOf(id);
+        if (i >= 0) simpleSelection.splice(i, 1);
+        else {
+          if (simpleSelection.length >= 2) simpleSelection.shift();
+          simpleSelection.push(id);
+        }
+      } else {
+        simpleSelection = [id];
+      }
+      if (latest) renderSimple(latest);
+      return;
+    }
     const more = e.target.closest('.log-more');
     if (more) {
       const key = more.dataset.key;

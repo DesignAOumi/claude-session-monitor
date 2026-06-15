@@ -505,6 +505,78 @@ body.mode-detail .simple-view { display: none; }
 .pin-divider.running { color: var(--green); background: rgba(121,208,90,0.12); border: 1px solid rgba(121,208,90,0.4); }
 .pin-divider.waiting-div { color: var(--amber); background: rgba(240,168,48,0.1); border: 1px solid rgba(240,168,48,0.35); }
 
+/* ░░ Live session chip bar + split detail ░░ */
+.live-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--bg);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+.live-bar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.live-bar-title { color: var(--ink-dim); font-size: 11.5px; letter-spacing: 0.5px; }
+.split-btn {
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--border-bright);
+  background: #0e1009;
+  color: var(--ink-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.split-btn:hover { color: var(--ink); }
+.split-btn.on { background: var(--amber); color: #15180d; font-weight: 700; border-color: var(--amber); }
+
+.live-chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.live-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 7px 13px;
+  border-radius: 20px;
+  border: 1px solid var(--border-bright);
+  background: #11140b;
+  color: var(--ink);
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.12s, background 0.12s;
+}
+.live-chip:hover { background: #181c0e; }
+.live-chip .chip-dot { width: 8px; height: 8px; border-radius: 50%; }
+.live-chip .chip-dot.working { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1.4s infinite; }
+.live-chip .chip-dot.waiting { background: var(--amber); }
+.live-chip .chip-proj { white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.live-chip .chip-act { font-size: 13px; }
+.live-chip.working { border-color: rgba(121,208,90,0.45); }
+.live-chip.waiting { border-color: rgba(240,168,48,0.45); }
+.live-chip.sel { background: #1f2410; border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+.live-chip .chip-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--amber);
+  color: #15180d;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.detail-area.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.detail-area.split .scard { animation: none; } /* calmer when comparing two */
+
 .scard-top { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .status-pill {
   font-size: 13px;
