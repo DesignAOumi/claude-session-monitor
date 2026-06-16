@@ -59,7 +59,12 @@ Switch anytime with the **しんぷる / くわしく** toggle in the top bar.
   - When a session is **waiting on you**, its last reply is split into **確認事項** (questions you need to answer) and a **やることリスト** (to-dos). The to-dos are real checkboxes — click to check them off (purely visual, no side effects; the checked state is remembered)
   - Honest progress proxies: working time, number of steps, files touched, your message count, and an **activity pulse** sparkline
   - **Actual cost** you configure (flat plan fee + any additional charge) — not a token-based guess
-- **くわしく (Detail)** — the technical trading-terminal dashboard described below.
+- **くわしく (Detail)** — the technical trading-terminal dashboard described below. Includes a
+  **稼働タイムライン** panel showing how busy the selected session was over its lifetime
+  (turns per time bucket, with a start→end time axis).
+
+When usage is auto-fetched via the statusLine hook, the session/weekly fields in the settings
+panel are **locked** (read-only) since the real values come from Claude Code.
 
 ## Features (Detail view)
 

@@ -591,7 +591,7 @@ function render(data) {
   const sel = sessions.find((s) => s.sessionId === selectedId) || null;
   renderDetail(sel);
   renderCycle(sel);
-  drawCostChart(sel);
+  drawTimeline(sel);
 
   renderSimple(data);
   usageWindow = data.stats.sessionWindow || null;
@@ -722,6 +722,20 @@ function openSettings() {
   setVal('u-credit-limit', usage.creditLimit);
   setVal('u-credit-balance', usage.creditBalance);
   setVal('u-credit-reset', usage.creditReset);
+
+  // Lock the fields that are auto-fetched via statusLine (can't be edited).
+  const auto = !!(autoLimits && autoLimits.available);
+  ['u-session', 'u-week', 'u-weekday', 'u-weekhour'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.disabled = auto;
+      el.style.opacity = auto ? '0.5' : '';
+      el.title = auto ? '自動取得中のため編集できません' : '';
+    }
+  });
+  document.getElementById('usage-auto-note').style.display = auto ? '' : 'none';
+  document.getElementById('usage-manual-note').style.display = auto ? 'none' : '';
+
   refreshFormSigns();
   document.getElementById('settings-overlay').classList.add('open');
 }
@@ -753,11 +767,13 @@ function wireSettings() {
       const v = document.getElementById(id).value;
       return v === '' ? null : parseFloat(v);
     };
+    const auto = !!(autoLimits && autoLimits.available);
     saveUsage({
-      sessionPct: numOrNull('u-session'),
-      weekPct: numOrNull('u-week'),
-      weekday: parseInt(document.getElementById('u-weekday').value, 10) || 0,
-      weekhour: parseInt(document.getElementById('u-weekhour').value, 10) || 0,
+      // Auto-fetched fields are locked: keep existing values rather than reading disabled inputs.
+      sessionPct: auto ? usage.sessionPct : numOrNull('u-session'),
+      weekPct: auto ? usage.weekPct : numOrNull('u-week'),
+      weekday: auto ? usage.weekday : parseInt(document.getElementById('u-weekday').value, 10) || 0,
+      weekhour: auto ? usage.weekhour : parseInt(document.getElementById('u-weekhour').value, 10) || 0,
       routineUsed: parseInt(document.getElementById('u-routine-used').value, 10) || 0,
       routineTotal: parseInt(document.getElementById('u-routine-total').value, 10) || 0,
       creditUsed: numOrNull('u-credit-used'),
@@ -960,7 +976,9 @@ function startTickerAnim() {
 }
 
 // ░░ Cost chart (cumulative, selected session) ░░
-function drawCostChart(s) {
+// Activity timeline: how busy the selected session was over its lifetime
+// (assistant turns per time bucket), with a start/end time axis.
+function drawTimeline(s) {
   const canvas = document.getElementById('chart-cost');
   const meta = document.getElementById('chart-cost-meta');
   const dpr = window.devicePixelRatio || 1;
@@ -972,59 +990,74 @@ function drawCostChart(s) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  const series = (s && s.usageSeries) || [];
-  meta.textContent = s ? fmtTokens(s.tokens.output) + ' 生成' : '0';
+  const pts = (s && s.usageSeries) || [];
+  meta.textContent = s ? `${pts.length}ターン / ${fmtDurationJa(s.durationMs)}` : '—';
+
+  const axisH = 14;
+  const pad = 6;
+  const chartH = h - axisH;
 
   // baseline grid
   ctx.strokeStyle = 'rgba(120,130,90,0.08)';
   ctx.lineWidth = 1;
-  for (let i = 1; i < 4; i++) {
-    const y = (h / 4) * i;
+  for (let i = 1; i < 3; i++) {
+    const y = (chartH / 3) * i;
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(w, y);
     ctx.stroke();
   }
 
-  if (series.length < 2) {
+  if (pts.length < 2) {
     ctx.fillStyle = '#595e49';
     ctx.font = '11px ui-monospace, monospace';
-    ctx.fillText('insufficient data', 10, h / 2);
+    ctx.fillText('データが少なすぎます', 10, chartH / 2);
     return;
   }
 
-  const pad = 6;
-  const t0 = series[0].ts;
-  const t1 = series[series.length - 1].ts || t0 + 1;
-  const maxTok = series[series.length - 1].tokens || 1;
-  const x = (t) => pad + ((t - t0) / (t1 - t0 || 1)) * (w - pad * 2);
-  const y = (c) => h - pad - (c / maxTok) * (h - pad * 2);
+  const t0 = pts[0].ts;
+  const t1 = Math.max(pts[pts.length - 1].ts || t0, s.mtimeMs || t0);
+  const span = t1 - t0 || 1;
+  const bins = Math.max(12, Math.min(48, Math.floor(w / 9)));
+  const counts = new Array(bins).fill(0);
+  for (const p of pts) {
+    let i = Math.floor(((p.ts - t0) / span) * bins);
+    if (i >= bins) i = bins - 1;
+    if (i < 0) i = 0;
+    counts[i] += 1;
+  }
+  const max = Math.max(...counts, 1);
 
-  // area
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, 'rgba(121,208,90,0.35)');
-  grad.addColorStop(1, 'rgba(121,208,90,0.02)');
-  ctx.beginPath();
-  ctx.moveTo(x(t0), h - pad);
-  for (const p of series) ctx.lineTo(x(p.ts), y(p.tokens));
-  ctx.lineTo(x(t1), h - pad);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
+  // bars (only where there was activity)
+  const innerW = w - pad * 2;
+  const bw = innerW / bins;
+  for (let i = 0; i < bins; i++) {
+    if (!counts[i]) continue;
+    const bh = Math.max(2, (counts[i] / max) * (chartH - pad * 2));
+    const x = pad + i * bw;
+    const grad = ctx.createLinearGradient(0, chartH - bh, 0, chartH);
+    grad.addColorStop(0, '#79d05a');
+    grad.addColorStop(1, '#2f5a23');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x + 0.5, chartH - pad - bh, Math.max(1, bw - 1.5), bh);
+  }
 
-  // line
-  ctx.beginPath();
-  series.forEach((p, i) => (i ? ctx.lineTo(x(p.ts), y(p.tokens)) : ctx.moveTo(x(p.ts), y(p.tokens))));
-  ctx.strokeStyle = '#79d05a';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // last point marker
-  const last = series[series.length - 1];
-  ctx.fillStyle = '#79d05a';
-  ctx.beginPath();
-  ctx.arc(x(last.ts), y(last.tokens), 2.5, 0, Math.PI * 2);
-  ctx.fill();
+  // time axis (start / mid / end)
+  const hm = (ts) => {
+    const d = new Date(ts);
+    return `${two(d.getHours())}:${two(d.getMinutes())}`;
+  };
+  ctx.fillStyle = '#595e49';
+  ctx.font = '9px ui-monospace, monospace';
+  ctx.textBaseline = 'bottom';
+  ctx.textAlign = 'left';
+  ctx.fillText(hm(t0), pad, h);
+  ctx.textAlign = 'center';
+  ctx.fillText(hm(t0 + span / 2), w / 2, h);
+  ctx.textAlign = 'right';
+  ctx.fillText(hm(t1), w - pad, h);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
 }
 
 // ░░ Clock ░░
@@ -1129,7 +1162,7 @@ async function boot() {
   window.monitor.onUpdate((data) => render(data));
   window.monitor.onError((msg) => console.error('scan error:', msg));
   window.addEventListener('resize', () => {
-    if (latest) drawCostChart(latest.sessions.find((s) => s.sessionId === selectedId));
+    if (latest) drawTimeline(latest.sessions.find((s) => s.sessionId === selectedId));
   });
 }
 

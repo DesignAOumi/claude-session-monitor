@@ -53,8 +53,9 @@
         </div>
         <div class="form-hint" id="form-total">合計: —</div>
 
-        <div class="modal-section">使用量（Claudeデスクトップアプリの「使用量」タブを見て入力）</div>
-        <p class="modal-note">リセットまでのカウントダウンは自動計算します。%・クレジットはローカルから取得できないため、ここに手入力した値を表示します。</p>
+        <div class="modal-section">使用量</div>
+        <p class="modal-note" id="usage-auto-note" style="display:none; color:var(--green)">✅ セッション・週間の使用率とリセット時刻は statusLine から<b>自動取得中</b>です。これらは編集できません（クレジット・ルーティンのみ手入力）。</p>
+        <p class="modal-note" id="usage-manual-note">セッション/週間%はstatusLine未設定のため手入力です（設定すると自動取得・編集不可になります）。クレジット・ルーティンは手入力。</p>
         <div class="form-grid">
           <label>現在のセッション 使用%</label>
           <input type="number" id="u-session" min="0" max="999" placeholder="例: 97" />
@@ -144,7 +145,7 @@
 
       <!-- COST GROWTH CHART -->
       <section class="panel panel-chart">
-        <div class="panel-head"><span>▸ 生成トークンの推移</span><span class="panel-meta" id="chart-cost-meta">0</span></div>
+        <div class="panel-head"><span>▸ 稼働タイムライン</span><span class="panel-meta" id="chart-cost-meta">—</span></div>
         <canvas id="chart-cost"></canvas>
       </section>
 
