@@ -1,133 +1,315 @@
-# Claude Session Monitor
+Claude Session Monitor
 
-A real-time, trading-terminal–style desktop dashboard that shows what your local
-**Claude Code** sessions are doing — across every project — at a glance.
+Claude Code のローカルセッションが、すべてのプロジェクトで今何をしているのか を一目で確認できる、トレーディングターミナル風のリアルタイムデスクトップダッシュボードです。
 
-It reads the session transcripts that Claude Code writes to
-`~/.claude/projects/**/*.jsonl`, watches them for changes, and renders a live
-multi-panel dashboard. Read-only: it never modifies your Claude data.
+Claude Code が出力するセッショントランスクリプト
+~/.claude/projects/**/*.jsonl
+を監視し、変更を検知してライブダッシュボードに表示します。
 
-> Run `npm start` to see it live. To add a screenshot here, capture the window
-> and drop it at `docs/screenshot.png`, then reference it in this README.
+読み取り専用で動作し、Claude のデータを変更することはありません。
 
-## Plan usage strip (with reset countdowns)
+npm start を実行するとダッシュボードを確認できます。README にスクリーンショットを追加する場合は、ウィンドウをキャプチャして docs/screenshot.png に保存し、この README から参照してください。
 
-A strip at the top (shown in both views) mirrors the Claude desktop app's **使用量** tab:
+⸻
 
-- **現在のセッション (5h)** — a live **countdown to reset**, computed automatically from
-  your message timestamps (Claude's rolling 5-hour window). Also shows messages / output
-  tokens used inside the current window.
-- **週間制限** — live countdown to the next weekly reset (configurable weekday/time, default Thu 3:00).
-- **利用クレジット** and **ルーティン/日** — usage bars.
+使用量バー（リセットまでのカウントダウン付き）
 
-### Automatic usage via the statusLine hook (recommended)
+画面上部（シンプル表示・詳細表示の両方）には、Claude デスクトップアプリの 「使用量」 タブを再現したバーが表示されます。
 
-The session/weekly **percentages and exact reset times** can be captured **automatically** —
-no API call, no credential access. Claude Code pipes a JSON object (including `rate_limits`
-for subscribers) to a configurable **statusLine** command. Point it at the bundled capture
-script and the monitor reads the real numbers:
+* 現在のセッション（5時間）
+    * メッセージ送信履歴から自動計算した リセットまでの残り時間
+    * 現在の5時間ウィンドウ内で使用した
+        * メッセージ数
+        * 出力トークン数
+* 週間制限
+    * 次回リセットまでのリアルタイムカウントダウン
+    * 曜日・時間は設定可能（デフォルト：木曜 3:00）
+* 利用クレジット
+* ルーティン / 日
+    * 使用率バー表示
 
-Add to `~/.claude/settings.json`:
+statusLine フックによる使用量の自動取得（推奨）
 
-```json
+セッション・週間使用率や、正確なリセット時刻 は API を使わず、自動取得できます。
+
+Claude Code は設定された statusLine コマンドへ、rate_limits を含む JSON を渡します。
+
+付属スクリプトへ接続することで、Monitor が実際の数値を表示できます。
+
+~/.claude/settings.json
+
 "statusLine": {
   "type": "command",
   "command": "/bin/sh \"<path-to-repo>/scripts/statusline-usage.sh\""
 }
-```
 
-The script writes `~/.claude/claude-monitor-usage.json` (and prints a short `5h 42% · 7d 12%`
-status line). The monitor then shows the real session/weekly % and counts down to the exact
-reset time. Values update whenever a Claude Code session is active; between sessions the last
-captured values are shown.
+このスクリプトは
 
-Credits and daily-routine counts aren't included in that JSON, so those remain manual via
-**⚙ 料金設定 → 使用量** (they rarely change). If the statusLine isn't set up, the session/weekly
-cells fall back to manual % + the locally-estimated reset countdown.
+~/.claude/claude-monitor-usage.json
 
-## Two views
+を生成し、
 
-Switch anytime with the **しんぷる / くわしく** toggle in the top bar.
+5h 42% · 7d 12%
 
-- **しんぷる (Simple)** — beginner-friendly. Answers the only three questions a newcomer
-  has: *Do I need to do something?* / *What is it doing right now?* / *How far has it got?*
-  - Big status pill per session: 🟢 **作業中** (working) · 🟡 **あなたの返信待ち** (waiting for you) · ⚪ **停止中** (stopped)
-  - "Now doing…" in plain words with an icon (📖 reading a file, 💻 running a command, 🤔 thinking…)
-  - Plain-language activity log with the **real content** (Claude's reply text, the actual Bash command, result/error snippets) — each entry expands to full text with a もっと見る toggle
-  - Non-stopped sessions (running + waiting) appear as a **horizontal chip bar** pinned at the top; click one to show its detail below. **Split view** (toggle) shows up to **2** session details side by side. Running sessions have a pulsing green dot
-  - A selected session stays open even if it goes idle — it is **not** auto-closed on a refresh; it only leaves the detail view when you pick something else or the session file disappears
-  - When a session is **waiting on you**, its last reply is split into **確認事項** (questions you need to answer) and a **やることリスト** (to-dos). The to-dos are real checkboxes — click to check them off (purely visual, no side effects; the checked state is remembered)
-  - Honest progress proxies: working time, number of steps, files touched, your message count, and an **activity pulse** sparkline
-  - **Actual cost** you configure (flat plan fee + any additional charge) — not a token-based guess
-- **くわしく (Detail)** — the technical trading-terminal dashboard described below. Includes a
-  **稼働タイムライン** panel showing how busy the selected session was over its lifetime
-  (turns per time bucket, with a start→end time axis).
+のようなステータスも表示します。
 
-When usage is auto-fetched via the statusLine hook, the session/weekly fields in the settings
-panel are **locked** (read-only) since the real values come from Claude Code.
+Monitor はこの情報を読み取り、
 
-## Features (Detail view)
+* セッション使用率
+* 週間使用率
+* 正確なリセット時刻
 
-- **All-projects session list** — every session under `~/.claude/projects`, newest first,
-  with a live status dot: 🟢 active (touched <30s), 🟡 recent (<5min), ⚪ idle.
-- **Live activity** — what each session is doing *right now*: thinking, running a tool
-  (with the file/command it's touching), processing a result, or replying.
-- **Execution cycle** — the current turn's stage highlighted: Await → Think → Tool → Result → Reply.
-- **Token & cost accounting** — input / output / cache-write / cache-read tokens per session,
-  with a rough USD cost estimate per model (see caveat below).
-- **Cost growth chart** — cumulative estimated spend over the selected session's lifetime.
-- **Tool usage breakdown** — which tools are used most (Bash, Edit, Read, …).
-- **Global live feed + ticker** — a stream of recent events across all sessions.
-- **Session focus panel** — model, branch, message counts, duration; click the path to reveal in Finder.
+をリアルタイム表示します。
 
-## Requirements
+Claude Code が動作中は自動更新され、終了後も最後に取得した値を表示します。
 
-- macOS / Windows / Linux
-- [Node.js](https://nodejs.org) 18+ and npm
-- Claude Code installed and used at least once (so `~/.claude/projects` exists)
+手動設定が必要な項目
 
-## Run
+以下は statusLine の JSON に含まれないため、
 
-```bash
+⚙ 料金設定 → 使用量
+
+から手動入力します。
+
+* 利用クレジット
+* ルーティン / 日
+
+これらは頻繁に変わらないため、通常は一度設定すれば十分です。
+
+statusLine を設定していない場合、
+
+* セッション使用率
+* 週間使用率
+
+は手動入力値と、ローカル推定によるリセット時刻が表示されます。
+
+⸻
+
+2つの表示モード
+
+画面上部の
+
+しんぷる / くわしく
+
+トグルでいつでも切り替えられます。
+
+しんぷる（Simple）
+
+初心者向けビュー。
+
+Claude Code を初めて使う人が知りたい3つのことだけを表示します。
+
+* 今、自分が何かする必要がある？
+* Claude は今何をしている？
+* あとどれくらいで終わる？
+
+主な機能
+
+* セッションごとの大きなステータス表示
+    * 🟢 作業中
+    * 🟡 あなたの返信待ち
+    * ⚪ 停止中
+* 「現在実行中」の内容をアイコン付きで表示
+    * 📖 ファイルを読んでいる
+    * 💻 コマンド実行中
+    * 🤔 考え中
+* 分かりやすいアクティビティログ
+    * Claude の返信内容
+    * 実際に実行した Bash コマンド
+    * エラーや結果
+    は「もっと見る」で全文表示できます。
+* 実行中・返信待ちのセッションは画面上部にチップ形式で表示
+* チップをクリックすると詳細表示
+* Split View をオンにすると最大2セッションを横並び表示
+* 実行中セッションには点滅する緑色インジケータ
+* 選択したセッションは停止しても閉じません
+* Claude が返信待ちの場合
+    最後の返信を
+    * 確認事項
+    * やることリスト
+    に自動整理します。
+* やることリストはチェックボックス付き
+    （表示のみで Claude には影響しません）
+* 進捗の目安として
+    * 作業時間
+    * ステップ数
+    * 編集ファイル数
+    * ユーザー送信メッセージ数
+    * アクティビティスパークライン
+    を表示
+* 実際の料金表示
+    （トークン推定ではなく、設定した月額料金＋追加料金）
+
+くわしく（Detail）
+
+技術者向けのトレーディングターミナル風ダッシュボード。
+
+追加で 稼働タイムライン を表示します。
+
+セッション全体を通して、時間ごとの処理量をグラフ化します。
+
+statusLine による自動取得を利用している場合、設定画面の
+
+* セッション使用率
+* 週間使用率
+
+は読み取り専用になります。
+
+⸻
+
+詳細ビューの機能
+
+* 全プロジェクトのセッション一覧
+    * ~/.claude/projects
+    * 新しい順で表示
+    * ステータス
+        * 🟢 稼働中（30秒以内に更新）
+        * 🟡 最近更新（5分以内）
+        * ⚪ アイドル
+* ライブアクティビティ
+    * 思考中
+    * ツール実行中
+    * コマンド実行中
+    * 結果処理中
+    * 返信生成中
+* 実行サイクル
+
+Await
+↓
+Think
+↓
+Tool
+↓
+Result
+↓
+Reply
+
+* トークン使用状況
+    * 入力トークン
+    * 出力トークン
+    * Cache Write
+    * Cache Read
+    * モデルごとの概算USDコスト
+* コスト推移グラフ
+
+セッション全体での累積推定コスト
+
+* ツール利用分析
+
+例
+
+* Bash
+* Edit
+* Read
+
+などの利用回数を表示します。
+
+* 全体ライブフィード
+
+すべてのセッションの最新イベントをリアルタイム表示します。
+
+* セッション情報
+
+表示内容
+
+* モデル
+* Gitブランチ
+* メッセージ数
+* 実行時間
+
+プロジェクトパスをクリックすると Finder で開けます。
+
+⸻
+
+必要環境
+
+* macOS / Windows / Linux
+* Node.js 18以上
+* npm
+* Claude Code を一度以上利用していること（~/.claude/projects が存在する必要があります）
+
+⸻
+
+実行方法
+
 git clone https://github.com/DesignAOumi/claude-session-monitor.git
 cd claude-session-monitor
 npm install
 npm start
-```
 
-The dashboard updates automatically as your Claude Code sessions run.
+Claude Code のセッションが動作している間、ダッシュボードは自動更新されます。
 
-## How it works
+⸻
 
-```
-~/.claude/projects/<project>/<session>.jsonl   ← Claude Code transcripts (source of truth)
-        │  fs.watch (recursive) + 1.5s heartbeat
+動作の仕組み
+
+~/.claude/projects/<project>/<session>.jsonl
+        │
+        │ fs.watch + 1.5秒ごとの監視
         ▼
-   src/scanner.js   → lists & stats every session file (mtime-cached, re-parses only changed files)
-   src/parser.js    → turns each JSONL into metrics (tokens, tools, activity, status)
-   src/pricing.js   → rough USD cost estimate per model
-        │  IPC (preload bridge)
-        ▼
-   renderer/        → the terminal-style dashboard (HTML / CSS / Canvas, no frameworks)
-```
+src/scanner.js
+    ↓
+セッション一覧・更新確認
+（変更されたファイルのみ再解析）
+src/parser.js
+    ↓
+JSONLから
+・トークン
+・ツール利用
+・アクティビティ
+・ステータス
+を解析
+src/pricing.js
+    ↓
+モデルごとの概算コスト計算
+IPC
+renderer/
+    ↓
+HTML / CSS / Canvas のみで
+トレーディングターミナル風UIを描画
 
-The only runtime dependency is Electron. Everything else is plain Node + vanilla JS.
+実行時の依存ライブラリは Electron のみ。
 
-## Cost display
+その他はすべて Node.js と Vanilla JavaScript で構成されています。
 
-Claude Code transcripts do **not** record what you are actually charged, so the app
-does not show a token-based cost guess. Instead, open **⚙ 料金設定** in the top bar and
-enter your **flat plan fee** (e.g. Claude Pro / Max) plus any **additional charge**.
-That sum is shown as your real monthly cost (yen or USD), and is saved locally.
+⸻
 
-Token usage is still shown as *usage* (not money): per-session token counts and a
-"生成トークンの推移" (output-token growth) chart.
+コスト表示について
 
-## Privacy
+Claude Code のトランスクリプトには、実際に請求された料金 は記録されません。
 
-Everything runs locally. The app only reads files under your own `~/.claude/projects`
-directory and never sends anything over the network.
+そのため、本アプリではトークン数から料金を推定表示しません。
 
-## License
+代わりに ⚙ 料金設定 から
 
-MIT
+* 月額プラン料金（Claude Pro / Max など）
+* 従量課金
+
+を入力します。
+
+その合計を 実際の月額コスト として表示します（円・ドル対応）。
+
+設定内容はローカルに保存されます。
+
+なお、トークン使用量自体は引き続き表示されます。
+
+* セッションごとのトークン数
+* 生成トークンの推移グラフ
+
+⸻
+
+プライバシー
+
+すべてローカルで動作します。
+
+アプリは
+
+~/.claude/projects
+
+配下のファイルを読み取るだけで、外部ネットワークへデータを送信することはありません。
+
+⸻
+
+ライセンス
+
+MIT License
